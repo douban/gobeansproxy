@@ -26,10 +26,10 @@ type DStoreConfig struct {
 	N                   int `yaml:",omitempty"`
 	W                   int `yaml:",omitempty"`
 	R                   int `yaml:",omitempty"`
-	MaxFreeConnsPerHost int `yaml:",omitempty"`
-	ConnectTimeoutMs    int `yaml:",omitempty"`
-	DialFailSilenceMs   int `yaml:",omitempty"`
-	WriteTimeoutMs      int `yaml:",omitempty"`
+	MaxFreeConnsPerHost int `yaml:"max_free_conns_per_host,omitempty"`
+	ConnectTimeoutMs    int `yaml:"connect_timeout_ms,omitempty"`
+	DialFailSilenceMs   int `yaml:"dial_fail_silence_ms,omitempty"`
+	WriteTimeoutMs      int `yaml:"write_timeout_ms,omitempty"`
 }
 
 func (c *ProxyConfig) InitDefault() {

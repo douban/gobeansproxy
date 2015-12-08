@@ -17,8 +17,6 @@ dstore:
   w: 2
   r: 1
   max_free_conns_per_host: 20
-  # slow_cmd_ms: 100
   connect_timeout_ms: 300
-  # read_timeout_ms: 2000
   write_timeout_ms: 2000
   dial_fail_silence_ms: 5000
