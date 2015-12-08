@@ -1,0 +1,17 @@
+# for doubandb proxy
+proxy:
+  listen: 0.0.0.0
+  port: 7905
+  webport: 7908
+  threads: 8
+  n: 3
+  w: 2
+  r: 1
+  logdir: /var/log/gobeansproxy
+  hostname: 127.0.0.1
+mc:
+  max_key_len: 250
+  max_req: 16
+  body_max_str: 50M
+  body_big_str: 5M
+  body_c_str: 4K
