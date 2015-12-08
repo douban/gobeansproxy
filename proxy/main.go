@@ -47,6 +47,7 @@ func main() {
 		log.Printf("use confdir %s", *confdir)
 		conf.Load(*confdir)
 	}
+	log.Printf("server port: %d, web port: %d", conf.Port, conf.WebPort)
 
 	if *dumpconf {
 		config.DumpConfig(conf)
@@ -56,6 +57,7 @@ func main() {
 	runtime.GOMAXPROCS(conf.Threads)
 
 	initLog()
+	logger.Infof("start gobeansproxy")
 	logger.Infof("gobeansproxy version %s starting at %d, config: %#v",
 		config.Version, conf.Port, conf)
 	logger.Infof("route table: %#v", config.Route)

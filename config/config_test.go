@@ -34,4 +34,5 @@ func TestLoadConfig(t *testing.T) {
 	util.AssertEqual(t, proxyCfg.MaxFreeConnsPerHost, 20, "")
 	util.AssertEqual(t, proxyCfg.ConnectTimeoutMs, 300, "")
 
+	util.AssertEqual(t, Route.Main[0].Addr, "127.0.0.1:7980", "")
 }

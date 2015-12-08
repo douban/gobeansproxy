@@ -30,7 +30,8 @@ type Host struct {
 }
 
 func NewHost(addr string) *Host {
-	host := &Host{Addr: addr}
+	host := new(Host)
+	host.Addr = addr
 	host.conns = make(chan net.Conn, proxyConf.MaxFreeConnsPerHost)
 	return host
 }

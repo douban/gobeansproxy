@@ -7,15 +7,21 @@ import (
 )
 
 var (
-	logger    = loghub.Default
-	proxyConf = &config.Proxy
+	logger          = loghub.Default
+	proxyConf       = &config.Proxy
+	routeConf       = config.Route
+	manualScheduler Scheduler
 )
 
 type Storage struct {
 }
 
 func (s *Storage) Client() mc.StorageClient {
-	return new(StorageClient)
+	if manualScheduler == nil {
+		manualScheduler = NewManualScheduler()
+	}
+	return NewStorageClient(manualScheduler, proxyConf.N, proxyConf.W, proxyConf.R)
+
 }
 
 // client for gobeansdb
@@ -49,7 +55,9 @@ func (sc *StorageClient) GetMulti(keys []string) (map[string]*mc.Item, error) {
 }
 
 func (sc *StorageClient) Set(key string, item *mc.Item, noreply bool) (bool, error) {
-	return false, nil
+	hosts := sc.scheduler.GetHostsByKey(key)
+	ok, err := hosts[0].Set(key, item, noreply)
+	return ok, err
 }
 
 func (sc *StorageClient) Append(key string, value []byte) (bool, error) {
