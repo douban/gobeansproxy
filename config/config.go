@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	Version = 0.1
+	Version = "0.1"
 )
 
 var (
@@ -17,32 +17,28 @@ var (
 )
 
 type ProxyConfig struct {
-	ProxyServerConfig `yaml:"proxy,omitempty"`
-	dbcfg.MCConfig    `yaml:"mc,omitempty"`
+	dbcfg.ServerConfig `yaml:"proxy,omitempty"`
+	dbcfg.MCConfig     `yaml:"mc,omitempty"`
+	DStoreConfig       `yaml:"dstore,omitempty"`
 }
 
-type ProxyServerConfig struct {
-	Hostname string `yaml:",omitempty"`
-	ZK       string `yaml:",omitempty"` // e.g. "zk1:2100"
-	Listen   string `yaml:",omitempty"` // ip
-	Port     int    `yaml:",omitempty"`
-	WebPort  int    `yaml:",omitempty"`
-	Threads  int    `yaml:",omitempty"` // NumCPU
-	LogDir   string `yaml:",omitempty"`
-	N        int    `yaml:",omitempty"`
-	W        int    `yaml:",omitempty"`
-	R        int    `yaml:",omitempty"`
+type DStoreConfig struct {
+	N                   int `yaml:",omitempty"`
+	W                   int `yaml:",omitempty"`
+	R                   int `yaml:",omitempty"`
+	MaxFreeConnsPerHost int `yaml:",omitempty"`
+	ConnectTimeoutMs    int `yaml:",omitempty"`
+	DialFailSilenceMs   int `yaml:",omitempty"`
+	WriteTimeoutMs      int `yaml:",omitempty"`
 }
 
 func (c *ProxyConfig) InitDefault() {
-	c.ProxyServerConfig = DefaultProxyServerConfig
+	c.ServerConfig = DefaultServerConfig
 	c.MCConfig = dbcfg.DefaultMCConfig
-
+	c.DStoreConfig = DefaultDStoreConfig
 }
 
 func (c *ProxyConfig) Load(confdir string) {
-	c.InitDefault()
-
 	if confdir != "" {
 		var f string
 
@@ -60,4 +56,8 @@ func (c *ProxyConfig) Load(confdir string) {
 			Route = route
 		}
 	}
+}
+
+func DumpConfig(config interface{}) {
+	dbcfg.DumpConfig(config)
 }
