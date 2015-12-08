@@ -3,10 +3,12 @@ package dstore
 import (
 	"github.intra.douban.com/coresys/gobeansdb/loghub"
 	mc "github.intra.douban.com/coresys/gobeansdb/memcache"
+	"github.intra.douban.com/coresys/gobeansproxy/config"
 )
 
 var (
-	logger = loghub.Default
+	logger    = loghub.Default
+	proxyConf = &config.Proxy
 )
 
 type Storage struct {
