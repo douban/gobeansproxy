@@ -1,15 +1,17 @@
 package dstore
 
 import (
+	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
 	"github.intra.douban.com/coresys/gobeansdb/loghub"
 	mc "github.intra.douban.com/coresys/gobeansdb/memcache"
+
 	"github.intra.douban.com/coresys/gobeansproxy/config"
 )
 
 var (
 	logger          = loghub.Default
 	proxyConf       = &config.Proxy
-	routeConf       = config.Route
+	routeConf       *dbcfg.RouteTable
 	manualScheduler Scheduler
 )
 
@@ -17,11 +19,13 @@ type Storage struct {
 }
 
 func (s *Storage) Client() mc.StorageClient {
+	if routeConf == nil {
+		routeConf = config.Route
+	}
 	if manualScheduler == nil {
-		manualScheduler = NewManualScheduler()
+		manualScheduler = NewManualScheduler(routeConf, proxyConf.N)
 	}
 	return NewStorageClient(manualScheduler, proxyConf.N, proxyConf.W, proxyConf.R)
-
 }
 
 // client for gobeansdb
