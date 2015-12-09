@@ -55,6 +55,13 @@ func (c *ProxyConfig) Load(confdir string) {
 		} else {
 			Route = route
 		}
+		checkConfig(c, Route)
+	}
+}
+
+func checkConfig(proxy *ProxyConfig, route *dbcfg.RouteTable) {
+	if route == nil {
+		log.Fatal("empty route config")
 	}
 }
 

@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.intra.douban.com/coresys/gobeansproxy/util"
+	"github.intra.douban.com/coresys/gobeansproxy/utils"
 )
 
 func getCurrentDir() (dir string, ok bool) {
@@ -25,14 +25,14 @@ func TestLoadConfig(t *testing.T) {
 	proxyCfg := new(ProxyConfig)
 	proxyCfg.Load(confdir)
 
-	util.AssertEqual(t, proxyCfg.Hostname, "127.0.0.1", "")
-	util.AssertEqual(t, proxyCfg.Port, 7905, "")
-	util.AssertEqual(t, proxyCfg.MaxKeyLen, 250, "")
+	utils.AssertEqual(t, proxyCfg.Hostname, "127.0.0.1", "")
+	utils.AssertEqual(t, proxyCfg.Port, 7905, "")
+	utils.AssertEqual(t, proxyCfg.MaxKeyLen, 250, "")
 
-	util.AssertEqual(t, proxyCfg.N, 3, "")
-	util.AssertEqual(t, proxyCfg.R, 1, "")
-	util.AssertEqual(t, proxyCfg.MaxFreeConnsPerHost, 20, "")
-	util.AssertEqual(t, proxyCfg.ConnectTimeoutMs, 300, "")
+	utils.AssertEqual(t, proxyCfg.N, 3, "")
+	utils.AssertEqual(t, proxyCfg.R, 1, "")
+	utils.AssertEqual(t, proxyCfg.MaxFreeConnsPerHost, 20, "")
+	utils.AssertEqual(t, proxyCfg.ConnectTimeoutMs, 300, "")
 
-	util.AssertEqual(t, Route.Main[0].Addr, "127.0.0.1:7980", "")
+	utils.AssertEqual(t, Route.Main[0].Addr, "127.0.0.1:7980", "")
 }
