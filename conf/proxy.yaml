@@ -19,4 +19,5 @@ dstore:
   max_free_conns_per_host: 20
   connect_timeout_ms: 300
   write_timeout_ms: 2000
+  read_timeout_ms: 2000
   dial_fail_silence_ms: 5000

@@ -30,6 +30,7 @@ type DStoreConfig struct {
 	ConnectTimeoutMs    int `yaml:"connect_timeout_ms,omitempty"`
 	DialFailSilenceMs   int `yaml:"dial_fail_silence_ms,omitempty"`
 	WriteTimeoutMs      int `yaml:"write_timeout_ms,omitempty"`
+	ReadTimeoutMs       int `yaml:"read_timeout_ms,omitempty"`
 }
 
 func (c *ProxyConfig) InitDefault() {

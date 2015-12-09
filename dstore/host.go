@@ -20,6 +20,9 @@ type Host struct {
 	// Addr is host:port pair
 	Addr string
 
+	// Index is the index of host in Scheduler.hosts
+	Index int
+
 	// nextDial is the next time to reconnect
 	nextDial time.Time
 
@@ -198,4 +201,14 @@ func (host *Host) store(cmd string, key string, item *mc.Item, noreply bool) (bo
 
 func (host *Host) Set(key string, item *mc.Item, noreply bool) (bool, error) {
 	return host.store("set", key, item, noreply)
+}
+
+func (host *Host) Get(key string) (*mc.Item, error) {
+	req := &mc.Request{Cmd: "get", Keys: []string{key}}
+	resp, err := host.executeWithTimeout(req, time.Duration(proxyConf.ReadTimeoutMs)*time.Millisecond)
+	if err != nil {
+		return nil, err
+	}
+	item, _ := resp.Items[key]
+	return item, nil
 }

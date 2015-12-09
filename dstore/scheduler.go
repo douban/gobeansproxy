@@ -7,7 +7,9 @@ package dstore
 // 	"time"
 // )
 import (
+	"math/rand"
 	"strconv"
+	"time"
 )
 
 import (
@@ -43,8 +45,13 @@ type ManualScheduler struct {
 
 	stats [][]float64
 
-	hashMethod  dbutil.HashMethod
+	hashMethod dbutil.HashMethod
+
+	// bucketWidth: 2^bucketWidth = route.NumBucket
 	bucketWidth int
+
+	// 传递 feedback 信息
+	feedChan chan *Feedback
 }
 
 func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
@@ -58,6 +65,7 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 	idx := 0
 	for addr, bucketsFlag := range route.Servers {
 		host := NewHost(addr)
+		host.Index = idx
 		sch.hosts[idx] = host
 		for bucket, mainFlag := range bucketsFlag {
 			if mainFlag {
@@ -75,6 +83,16 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 	}
 	sch.hashMethod = dbutil.Fnv1a
 	sch.bucketWidth = calBitWidth(route.NumBucket)
+
+	// scheduler 对各个 host 的打分机制
+	go sch.procFeedback()
+	go func() {
+		for {
+			sch.tryReward()
+			time.Sleep(5 * time.Second)
+		}
+	}()
+
 	return sch
 }
 
@@ -119,8 +137,99 @@ func (sch *ManualScheduler) GetHostsByKey(key string) (hosts []*Host) {
 	return
 }
 
+// feed back
+
+type Feedback struct {
+	hostIndex int
+	bucket    int
+	adjust    float64
+}
+
 func (sch *ManualScheduler) Feedback(host *Host, key string, adjust float64) {
-	return
+	bucket := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
+	sch.feedChan <- &Feedback{hostIndex: host.Index, bucket: bucket, adjust: adjust}
+}
+
+func (sch *ManualScheduler) procFeedback() {
+	sch.feedChan = make(chan *Feedback, 256)
+	for {
+		fb := <-sch.feedChan
+		sch.feedback(fb.hostIndex, fb.bucket, fb.adjust)
+	}
+}
+
+func (sch *ManualScheduler) feedback(hostIndex, bucket int, adjust float64) {
+	stats := sch.stats[bucket]
+	old := stats[hostIndex]
+	stats[hostIndex] += adjust
+
+	// try to reduce the bucket's stats
+	if stats[hostIndex] > 100 {
+		for i := 0; i < len(stats); i++ {
+			stats[i] /= 2
+		}
+	}
+
+	bucketHosts := make([]int, sch.N)
+	copy(bucketHosts, sch.buckets[bucket])
+
+	k := 0
+	// find the position
+	for k = 0; k < sch.N; k++ {
+		if bucketHosts[k] == hostIndex {
+			break
+		}
+	}
+
+	// move the position
+	if stats[hostIndex]-old > 0 {
+		for k > 0 && stats[bucketHosts[k]] > stats[bucketHosts[k-1]] {
+			swap(bucketHosts, k, k-1)
+		}
+		k--
+	} else {
+		for k < sch.N-1 && stats[bucketHosts[k]] < stats[bucketHosts[k+1]] {
+			swap(bucketHosts, k, k+1)
+		}
+		k++
+	}
+
+	// set it to origin
+	sch.buckets[bucket] = bucketHosts
+}
+
+func (sch *ManualScheduler) tryReward() {
+	for i, _ := range sch.buckets {
+		// random reward 2nd, 3rd
+		if sch.N > 1 {
+			sch.rewardNode(i, 1, 10)
+		}
+		if sch.N > 2 {
+			sch.rewardNode(i, 2, 16)
+		}
+	}
+}
+
+func swap(a []int, j, k int) {
+	a[j], a[k] = a[k], a[j]
+}
+
+func (sch *ManualScheduler) rewardNode(bucket int, node int, maxReward int) {
+	hostIdx := sch.buckets[bucket][node]
+	if _, err := sch.hosts[hostIdx].Get("@"); err == nil {
+		var reward float64 = 0.0
+		stat := sch.stats[bucket][hostIdx]
+		if stat < 0 {
+			reward = 0 - stat
+		} else {
+			reward = float64(rand.Intn(maxReward))
+		}
+		sch.feedChan <- &Feedback{hostIndex: hostIdx, bucket: bucket, adjust: reward}
+	} else {
+		logger.Infof(
+			"beansdb server %s in Bucket %X's second node Down while try_reward, err is %s",
+			sch.hosts[hostIdx].Addr, bucket, err)
+	}
 }
 
 func (sch *ManualScheduler) DivideKeysByBucket(keys []string) [][]string {

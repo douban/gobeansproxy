@@ -2,6 +2,8 @@ package dstore
 
 import (
 	"errors"
+	"math"
+	"time"
 
 	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
 	"github.intra.douban.com/coresys/gobeansdb/loghub"
@@ -57,8 +59,41 @@ func NewStorageClient(s Scheduler, n int, w int, r int) (c *StorageClient) {
 	return c
 }
 
-func (c *StorageClient) Get(key string) (*mc.Item, error) {
-	return nil, nil
+func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
+	hosts := c.scheduler.GetHostsByKey(key)
+	cnt := 0
+	for _, host := range hosts[:c.N] {
+		start := time.Now()
+		item, err = host.Get(key)
+		if err == nil {
+			cnt++
+			if item != nil {
+				// t 是 Get 命令消耗的时间(单位是秒)
+				t := float64(time.Now().Sub(start)) / float64(time.Second)
+				// TODO: 这个公式的物理含义
+				c.scheduler.Feedback(host, key, 1-float64(math.Sqrt(t)*t))
+				c.SuccessedTargets = []string{host.Addr}
+				return
+			} else {
+				c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
+			}
+		} else {
+			// TODO: 尽量解释下面两个 Magic Number 的含义
+			if !isWaitForRetry(err) {
+				c.scheduler.Feedback(host, key, -5)
+			} else {
+				c.scheduler.Feedback(host, key, -2)
+			}
+		}
+	}
+
+	if cnt >= c.R {
+		// because hosts are sorted
+		err = nil
+	}
+
+	// here is a failure exit
+	return
 }
 
 func (c *StorageClient) GetMulti(keys []string) (map[string]*mc.Item, error) {
