@@ -25,7 +25,7 @@ func initLog() {
 		logpath := path.Join(conf.LogDir, "gobeansproxy.log")
 		log.Printf("loggging to %s\n", logpath)
 		bufferSize := 200
-		loghub.SetDefault(logpath, loghub.INFO, bufferSize)
+		loghub.SetDefault(logpath, loghub.DEBUG, bufferSize)
 	}
 }
 

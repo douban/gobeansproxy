@@ -106,7 +106,7 @@ func getBucketByKey(hashFunc dbutil.HashMethod, bucketWidth int, key string) int
 
 func (sch *ManualScheduler) GetHostsByKey(key string) (hosts []*Host) {
 	bucket := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
-	hosts = make([]*Host, sch.N+len(sch.buckets[bucket]))
+	hosts = make([]*Host, sch.N+len(sch.backups[bucket]))
 
 	// set the main nodes
 	for i, hostIdx := range sch.buckets[bucket] {

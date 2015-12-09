@@ -1,6 +1,8 @@
 package dstore
 
 import (
+	"errors"
+
 	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
 	"github.intra.douban.com/coresys/gobeansdb/loghub"
 	mc "github.intra.douban.com/coresys/gobeansdb/memcache"
@@ -13,6 +15,11 @@ var (
 	proxyConf       = &config.Proxy
 	routeConf       *dbcfg.RouteTable
 	manualScheduler Scheduler
+)
+
+var (
+	// ErrWriteFailed 表示成功写入的节点数小于 StorageClient.W
+	ErrWriteFailed = errors.New("write failed")
 )
 
 type Storage struct {
@@ -50,39 +57,92 @@ func NewStorageClient(s Scheduler, n int, w int, r int) (c *StorageClient) {
 	return c
 }
 
-func (sc *StorageClient) Get(key string) (*mc.Item, error) {
+func (c *StorageClient) Get(key string) (*mc.Item, error) {
 	return nil, nil
 }
 
-func (sc *StorageClient) GetMulti(keys []string) (map[string]*mc.Item, error) {
+func (c *StorageClient) GetMulti(keys []string) (map[string]*mc.Item, error) {
 	return nil, nil
 }
 
-func (sc *StorageClient) Set(key string, item *mc.Item, noreply bool) (bool, error) {
-	hosts := sc.scheduler.GetHostsByKey(key)
-	ok, err := hosts[0].Set(key, item, noreply)
-	return ok, err
+func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {
+	logger.Debugf("Set key=%s", key)
+	hosts := c.scheduler.GetHostsByKey(key)
+	if len(hosts) >= c.N {
+		mainSuc, mainTargets := c.setConcurrently(hosts[:c.N], key, item, noreply)
+		if mainSuc >= c.W {
+			ok = true
+			c.SuccessedTargets = mainTargets
+			return
+		}
+
+		backupSuc, backupTargets := c.setConcurrently(hosts[c.N:], key, item, noreply)
+		if mainSuc+backupSuc >= c.W {
+			ok = true
+			c.SuccessedTargets = append(mainTargets, backupTargets...)
+			return
+		}
+	}
+	ok = false
+	err = ErrWriteFailed
+	return
 }
 
-func (sc *StorageClient) Append(key string, value []byte) (bool, error) {
+// cmdReturnType 只在 setConcurrently 函数中使用，
+// 用来在 goroutine 之间传递数据
+type cmdReturnType struct {
+	host *Host
+	ok   bool
+	err  error
+}
+
+func (c *StorageClient) setConcurrently(
+	hosts []*Host,
+	key string,
+	item *mc.Item,
+	noreply bool,
+) (suc int, targets []string) {
+	suc = 0
+	results := make(chan cmdReturnType, len(hosts))
+	for _, host := range hosts {
+		go func(host *Host) {
+			ok, err := host.Set(key, item, noreply)
+			res := cmdReturnType{host: host, ok: ok, err: err}
+			results <- res
+		}(host)
+	}
+
+	for i := 0; i < len(hosts); i++ {
+		res := <-results
+		if res.ok {
+			suc++
+			targets = append(targets, res.host.Addr)
+		} else if !isWaitForRetry(res.err) {
+			c.scheduler.Feedback(res.host, key, -10)
+		}
+	}
+	return
+}
+
+func (c *StorageClient) Append(key string, value []byte) (bool, error) {
 	return false, nil
 }
 
-func (sc *StorageClient) Incr(key string, value int) (int, error) {
+func (c *StorageClient) Incr(key string, value int) (int, error) {
 	return 0, nil
 }
 
-func (sc *StorageClient) Delete(key string) (bool, error) {
+func (c *StorageClient) Delete(key string) (bool, error) {
 	return false, nil
 }
 
-func (sc *StorageClient) Len() int {
+func (c *StorageClient) Len() int {
 	return 0
 }
 
-func (sc *StorageClient) Close() {
+func (c *StorageClient) Close() {
 }
 
-func (sc *StorageClient) Process(key string, args []string) (string, string) {
+func (c *StorageClient) Process(key string, args []string) (string, string) {
 	return "", ""
 }

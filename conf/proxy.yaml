@@ -13,8 +13,8 @@ mc:
   body_big_str: 5M
   body_c_str: 4K
 dstore:
-  n: 3
-  w: 2
+  n: 1
+  w: 1
   r: 1
   max_free_conns_per_host: 20
   connect_timeout_ms: 300
