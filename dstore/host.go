@@ -175,24 +175,6 @@ func (host *Host) Len() int {
 	return 0
 }
 
-func (host *Host) GetVersion() (string, error) {
-	req := &mc.Request{Cmd: "version"}
-	resp, err := host.executeWithTimeout(req, 1*time.Second)
-	if err != nil {
-		logger.Infof("%s get version fail fail: %v", host.Addr, err)
-		return "", err
-	}
-	version := "0.0.0.0"
-	if resp != nil {
-		if it, ok := resp.Items["VERSION"]; ok {
-			version = string(it.Body)
-		} else {
-			return "", fmt.Errorf("%s get version fail: no VERSION FOUND", host.Addr)
-		}
-	}
-	return version, nil
-}
-
 func (host *Host) store(cmd string, key string, item *mc.Item, noreply bool) (bool, error) {
 	req := &mc.Request{Cmd: cmd, Keys: []string{key}, Item: item, NoReply: noreply}
 	resp, err := host.executeWithTimeout(req, time.Duration(proxyConf.WriteTimeoutMs)*time.Millisecond)
