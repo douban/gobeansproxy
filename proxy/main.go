@@ -15,14 +15,14 @@ import (
 )
 
 var (
-	server *mc.Server
-	logger = loghub.Default
-	conf   = &config.Proxy
+	server    *mc.Server
+	logger    = loghub.Default
+	proxyConf = &config.Proxy
 )
 
 func initLog() {
-	if conf.LogDir != "" {
-		logpath := path.Join(conf.LogDir, "gobeansproxy.log")
+	if proxyConf.LogDir != "" {
+		logpath := path.Join(proxyConf.LogDir, "gobeansproxy.log")
 		log.Printf("loggging to %s\n", logpath)
 		bufferSize := 200
 		loghub.SetDefault(logpath, loghub.DEBUG, bufferSize)
@@ -42,30 +42,31 @@ func main() {
 		log.Printf("gobeansproxy version %s", config.Version)
 	}
 
-	conf.InitDefault()
+	proxyConf.InitDefault()
 	if *confdir != "" {
 		log.Printf("use confdir %s", *confdir)
-		conf.Load(*confdir)
+		proxyConf.Load(*confdir)
 	}
-	log.Printf("server port: %d, web port: %d", conf.Port, conf.WebPort)
+	log.Printf("server port: %d, web port: %d", proxyConf.Port, proxyConf.WebPort)
 
 	if *dumpconf {
-		config.DumpConfig(conf)
+		config.DumpConfig(proxyConf)
 		return
 	}
 
-	runtime.GOMAXPROCS(conf.Threads)
+	runtime.GOMAXPROCS(proxyConf.Threads)
 
 	initLog()
 	logger.Infof("start gobeansproxy")
 	logger.Infof("gobeansproxy version %s starting at %d, config: %#v",
-		config.Version, conf.Port, conf)
+		config.Version, proxyConf.Port, proxyConf)
 	logger.Infof("route table: %#v", config.Route)
 
 	// TODO: start web
 
+	dstore.InitGlobalManualScheduler(config.Route, proxyConf.N)
 	storage := new(dstore.Storage)
-	addr := fmt.Sprintf("%s:%d", conf.Listen, conf.Port)
+	addr := fmt.Sprintf("%s:%d", proxyConf.Listen, proxyConf.Port)
 	server = mc.NewServer(storage)
 	server.Listen(addr)
 

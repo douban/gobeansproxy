@@ -5,7 +5,6 @@ import (
 	"math"
 	"time"
 
-	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
 	"github.intra.douban.com/coresys/gobeansdb/loghub"
 	mc "github.intra.douban.com/coresys/gobeansdb/memcache"
 
@@ -13,10 +12,8 @@ import (
 )
 
 var (
-	logger          = loghub.Default
-	proxyConf       = &config.Proxy
-	routeConf       *dbcfg.RouteTable
-	manualScheduler Scheduler
+	logger    = loghub.Default
+	proxyConf = &config.Proxy
 )
 
 var (
@@ -28,12 +25,6 @@ type Storage struct {
 }
 
 func (s *Storage) Client() mc.StorageClient {
-	if routeConf == nil {
-		routeConf = config.Route
-	}
-	if manualScheduler == nil {
-		manualScheduler = NewManualScheduler(routeConf, proxyConf.N)
-	}
 	return NewStorageClient(manualScheduler, proxyConf.N, proxyConf.W, proxyConf.R)
 }
 

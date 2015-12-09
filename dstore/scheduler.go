@@ -1,20 +1,16 @@
 package dstore
 
-// import (
-// 	"math/rand"
-// 	"strconv"
-// 	"strings"
-// 	"time"
-// )
 import (
 	"math/rand"
 	"strconv"
 	"time"
-)
 
-import (
 	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
 	dbutil "github.intra.douban.com/coresys/gobeansdb/utils"
+)
+
+var (
+	manualScheduler Scheduler
 )
 
 // Scheduler: route request to nodes
@@ -52,6 +48,10 @@ type ManualScheduler struct {
 
 	// 传递 feedback 信息
 	feedChan chan *Feedback
+}
+
+func InitGlobalManualScheduler(route *dbcfg.RouteTable, n int) {
+	manualScheduler = NewManualScheduler(route, n)
 }
 
 func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
