@@ -2,38 +2,29 @@ package config
 
 import (
 	"path"
-	"runtime"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.intra.douban.com/coresys/gobeansproxy/utils"
 )
 
-func getCurrentDir() (dir string, ok bool) {
-	if _, filename, _, ok := runtime.Caller(1); ok {
-		return path.Dir(filename), ok
-	}
-	return
-}
-
 func TestLoadConfig(t *testing.T) {
-	currDir, ok := getCurrentDir()
-	if !ok {
-		t.Fatal("get current dir error")
-	}
-	confdir := path.Join(currDir, "../conf")
+	homeDir := utils.GetProjectHomeDir()
+	confdir := path.Join(homeDir, "conf")
 
 	proxyCfg := new(ProxyConfig)
 	proxyCfg.Load(confdir)
 
-	utils.AssertEqual(t, proxyCfg.Hostname, "127.0.0.1", "")
-	utils.AssertEqual(t, proxyCfg.Port, 7905, "")
-	utils.AssertEqual(t, proxyCfg.MaxKeyLen, 250, "")
+	assert := assert.New(t)
+	assert.Equal("127.0.0.1", proxyCfg.Hostname)
+	assert.Equal(7905, proxyCfg.Port)
+	assert.Equal(250, proxyCfg.MaxKeyLen)
 
-	utils.AssertEqual(t, proxyCfg.N, 1, "")
-	utils.AssertEqual(t, proxyCfg.R, 1, "")
-	utils.AssertEqual(t, proxyCfg.MaxFreeConnsPerHost, 20, "")
-	utils.AssertEqual(t, proxyCfg.ConnectTimeoutMs, 300, "")
-	utils.AssertEqual(t, proxyCfg.ReadTimeoutMs, 2000, "")
+	assert.Equal(1, proxyCfg.N)
+	assert.Equal(1, proxyCfg.R)
+	assert.Equal(20, proxyCfg.MaxFreeConnsPerHost)
+	assert.Equal(300, proxyCfg.ConnectTimeoutMs)
+	assert.Equal(2000, proxyCfg.ReadTimeoutMs)
 
-	utils.AssertEqual(t, Route.Main[0].Addr, "127.0.0.1:7980", "")
+	assert.Equal("127.0.0.1:7980", Route.Main[0].Addr)
 }

@@ -13,6 +13,7 @@ savedep: godep
 test:
 	go version
 	go test github.intra.douban.com/coresys/gobeansproxy/config
+	go test github.intra.douban.com/coresys/gobeansproxy/dstore
 
 install:
 	go install github.intra.douban.com/coresys/gobeansproxy/proxy
