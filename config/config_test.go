@@ -20,7 +20,7 @@ func TestLoadConfig(t *testing.T) {
 	assert.Equal(7905, proxyCfg.Port)
 	assert.Equal(250, proxyCfg.MaxKeyLen)
 
-	assert.Equal(1, proxyCfg.N)
+	assert.Equal(3, proxyCfg.N)
 	assert.Equal(1, proxyCfg.R)
 	assert.Equal(20, proxyCfg.MaxFreeConnsPerHost)
 	assert.Equal(300, proxyCfg.ConnectTimeoutMs)
