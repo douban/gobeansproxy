@@ -21,7 +21,7 @@ function start()
         echo "Beansdb server already started on port '$port'"
     else
         gen_conf
-        $cmd -confdir $basedir/$port/conf &
+        $cmd -confdir $basedir/$port/conf &> /dev/null &
         echo "Starting the beansdb server on port '$port'... "
     fi
 }
