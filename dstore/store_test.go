@@ -36,8 +36,9 @@ func testStoreClient(t *testing.T, c mc.StorageClient) {
 	flag := 2
 	item := newItem(flag, v)
 	defer freeItem(item)
-	ok, _ := c.Set(key2, item, false)
+	ok, err := c.Set(key2, item, false)
 	assert.True(ok)
+	assert.Nil(err)
 }
 
 func testFailStoreClient(t *testing.T, c mc.StorageClient) {

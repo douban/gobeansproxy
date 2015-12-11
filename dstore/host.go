@@ -194,3 +194,23 @@ func (host *Host) Get(key string) (*mc.Item, error) {
 	item, _ := resp.Items[key]
 	return item, nil
 }
+
+func (host *Host) GetMulti(keys []string) (map[string]*mc.Item, error) {
+	return nil, nil
+}
+
+func (host *Host) Append(key string, value []byte) (bool, error) {
+	return false, nil
+}
+
+func (host *Host) Incr(key string, value int) (int, error) {
+	return 0, nil
+}
+
+func (host *Host) Delete(key string) (bool, error) {
+	return false, nil
+}
+
+func (host *Host) Process(key string, args []string) (string, string) {
+	return "", ""
+}
