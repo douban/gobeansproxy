@@ -128,7 +128,9 @@ func (sch *ManualScheduler) GetHostsByKey(key string) (hosts []*Host) {
 
 	// set the main nodes
 	for i, hostIdx := range sch.buckets[bucket] {
-		hosts[i] = sch.hosts[hostIdx]
+		if i < sch.N {
+			hosts[i] = sch.hosts[hostIdx]
+		}
 	}
 	// set the backup nodes in pos after main nodes
 	for i, hostIdx := range sch.backups[bucket] {

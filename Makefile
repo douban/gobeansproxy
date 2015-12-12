@@ -11,8 +11,11 @@ savedep: godep
 	godep save ./...
 
 test:
+	./misc/gobeansdb_server.sh start
 	go version
 	go test github.intra.douban.com/coresys/gobeansproxy/config
+	go test github.intra.douban.com/coresys/gobeansproxy/dstore
+	./misc/gobeansdb_server.sh stop
 
 install:
 	go install github.intra.douban.com/coresys/gobeansproxy/proxy
