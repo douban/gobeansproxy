@@ -62,8 +62,6 @@ func main() {
 		config.Version, proxyConf.Port, proxyConf)
 	logger.Infof("route table: %#v", config.Route)
 
-	// TODO: start web
-
 	dstore.InitGlobalManualScheduler(config.Route, proxyConf.N)
 	storage := new(dstore.Storage)
 	addr := fmt.Sprintf("%s:%d", proxyConf.Listen, proxyConf.Port)
@@ -73,5 +71,6 @@ func main() {
 	logger.Infof("ready")
 	log.Printf("ready")
 
+	startWeb()
 	server.Serve()
 }

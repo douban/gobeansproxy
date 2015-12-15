@@ -25,7 +25,7 @@ type Scheduler interface {
 	DivideKeysByBucket(keys []string) [][]string
 
 	// internal status
-	Stats() map[string][]float64
+	Stats() map[int]map[string]float64
 }
 
 // route request by configure
@@ -39,6 +39,7 @@ type ManualScheduler struct {
 	// backups[bucket] is a list of host index.
 	backups [][]int
 
+	// stats[bucket][host_index] is the score.
 	stats [][]float64
 
 	hashMethod dbutil.HashMethod
@@ -48,6 +49,10 @@ type ManualScheduler struct {
 
 	// 传递 feedback 信息
 	feedChan chan *Feedback
+}
+
+func GetScheduler() Scheduler {
+	return manualScheduler
 }
 
 func InitGlobalManualScheduler(route *dbcfg.RouteTable, n int) {
@@ -238,6 +243,13 @@ func (sch *ManualScheduler) DivideKeysByBucket(keys []string) [][]string {
 	return nil
 }
 
-func (sch *ManualScheduler) Stats() map[string][]float64 {
-	return nil
+func (sch *ManualScheduler) Stats() map[int]map[string]float64 {
+	r := make(map[int]map[string]float64, len(sch.buckets))
+	for i, hosts := range sch.buckets {
+		r[i] = make(map[string]float64, len(hosts))
+		for _, hostIdx := range hosts {
+			r[i][sch.hosts[hostIdx].Addr] = sch.stats[i][hostIdx]
+		}
+	}
+	return r
 }

@@ -6,6 +6,7 @@ proxy:
   threads: 8
   logdir: ./
   hostname: 127.0.0.1
+  staticdir: /var/lib/gobeansproxy
 mc:
   max_key_len: 250
   max_req: 16

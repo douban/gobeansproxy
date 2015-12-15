@@ -25,7 +25,7 @@ gobeansdb_conf_tmpl = {
             'hint_split_cap_str': '1M',
         },
         'htree': {
-            'tree_height': 7,
+            'tree_height': 3,
         },
         'local': {
             'homes': ['/var/lib/beansdb']
