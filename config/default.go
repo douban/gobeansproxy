@@ -12,7 +12,8 @@ var (
 		WebPort:   7908,
 		Threads:   8,
 		ZK:        "NO",
-		LogDir:    "./",
+		ErrorLog:  "./proxy-error.log",
+		AccessLog: "./proxy-access.log",
 		StaticDir: "/var/lib/gobeansdb",
 	}
 

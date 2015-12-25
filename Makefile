@@ -8,6 +8,7 @@ godep:
 	which godep >/dev/null 2>&1 || go get github.com/tools/godep
 
 savedep: godep
+	rm -r Godeps
 	godep save ./...
 
 test:

@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"path"
 	"runtime"
 
 	"github.intra.douban.com/coresys/gobeansdb/loghub"
@@ -15,19 +14,11 @@ import (
 )
 
 var (
-	server    *mc.Server
-	logger    = loghub.Default
-	proxyConf = &config.Proxy
+	server       *mc.Server
+	proxyConf    = &config.Proxy
+	logger       = loghub.ErrorLogger
+	accessLogger = loghub.AccessLogger
 )
-
-func initLog() {
-	if proxyConf.LogDir != "" {
-		logpath := path.Join(proxyConf.LogDir, "gobeansproxy.log")
-		log.Printf("loggging to %s\n", logpath)
-		bufferSize := 200
-		loghub.SetDefault(logpath, loghub.DEBUG, bufferSize)
-	}
-}
 
 func main() {
 	var version = flag.Bool("version", false, "print vresion of beansproxy")
@@ -56,7 +47,7 @@ func main() {
 
 	runtime.GOMAXPROCS(proxyConf.Threads)
 
-	initLog()
+	loghub.InitLogger(proxyConf.ErrorLog, proxyConf.AccessLog)
 	logger.Infof("start gobeansproxy")
 	logger.Infof("gobeansproxy version %s starting at %d, config: %#v",
 		config.Version, proxyConf.Port, proxyConf)
@@ -71,6 +62,7 @@ func main() {
 	logger.Infof("ready")
 	log.Printf("ready")
 
+	server.HandleSignals(proxyConf.ErrorLog, proxyConf.AccessLog)
 	startWeb()
 	server.Serve()
 }

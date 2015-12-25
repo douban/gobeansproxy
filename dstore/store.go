@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	logger    = loghub.Default
+	logger    = loghub.ErrorLogger
 	proxyConf = &config.Proxy
 )
 
@@ -48,6 +48,15 @@ func NewStorageClient(s Scheduler, n int, w int, r int) (c *StorageClient) {
 	c.W = w
 	c.R = r
 	return c
+}
+
+func (c *StorageClient) GetSuccessedTargets() []string {
+	return c.SuccessedTargets
+}
+
+func (c *StorageClient) Clean() {
+	c.SuccessedTargets = nil
+	return
 }
 
 func (c *StorageClient) Get(key string) (item *mc.Item, err error) {

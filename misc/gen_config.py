@@ -41,7 +41,8 @@ gobeansdb_conf_tmpl = {
     'server': {
         'hostname': '127.0.0.1',
         'listen': '0.0.0.0',
-        'logdir': '/var/log/gobeansdb',
+        'errorlog': '/var/log/gobeansdb/error.log',
+        'accesslog': '',
         'port': 7900,
         'threads': 4,
         'webport': 7903,
@@ -89,7 +90,8 @@ proxy_conf_tmpl = {
     'proxy': {
         'hostname': '127.0.0.1',
         'listen': '0.0.0.0',
-        'logdir': './',
+        'errorlog': '/var/log/gobeansproxy/error.log',
+        'accesslog': '/var/log/gobeansproxy/access.log',
         'port': 7905,
         'threads': 8,
         'webport': 7908
@@ -167,7 +169,8 @@ def yaml_dump(conf, filename):
 def gen_server_conf(homedir, logdir, port, webport):
     tmpl = copy.deepcopy(gobeansdb_conf_tmpl)
     tmpl['hstore']['local']['homes'] = [homedir]
-    tmpl['server']['logdir'] = logdir
+    tmpl['server']['errorlog'] = os.path.join(logdir, 'error.log')
+    tmpl['server']['accesslog'] = ""
     tmpl['server']['port'] = port
     tmpl['server']['webport'] = webport
     return tmpl
@@ -184,7 +187,8 @@ def gen_route_conf(ports, backup_ports, numbucket=16):
 
 def gen_proxy_conf(logdir, port, webport):
     tmpl = copy.deepcopy(proxy_conf_tmpl)
-    tmpl['proxy']['logdir'] = logdir
+    tmpl['proxy']['errorlog'] = os.path.join(logdir, 'error.log')
+    tmpl['proxy']['accesslog'] = os.path.join(logdir, 'access.log')
     tmpl['proxy']['port'] = port
     tmpl['proxy']['webport'] = webport
     return tmpl
