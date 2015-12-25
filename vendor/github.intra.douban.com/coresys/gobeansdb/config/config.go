@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	Version = "2.1.0.4"
+	Version          = "2.1.0.9"
+	AccessLogVersion = "v1"
 )
 
 var (
@@ -39,7 +40,8 @@ type ServerConfig struct {
 	Port      int    `yaml:",omitempty"`
 	WebPort   int    `yaml:",omitempty"`
 	Threads   int    `yaml:",omitempty"` // NumCPU
-	LogDir    string `yaml:",omitempty"`
+	ErrorLog  string `yaml:",omitempty"`
+	AccessLog string `yaml:",omitempty"`
 	StaticDir string `yaml:",omitempty"` // directory for static files, e.g. *.html
 }
 
@@ -128,4 +130,13 @@ func (c *DBConfig) InitDefault() {
 	c.MCConfig = DefaultMCConfig
 	c.HStoreConfig.InitDefault()
 	utils.InitSizesPointer(c)
+}
+
+func BucketIDHex(id, numBucket int) string {
+	if numBucket == 16 {
+		return fmt.Sprintf("%x", id)
+	} else if numBucket == 256 {
+		return fmt.Sprintf("%2x", id)
+	}
+	return "0"
 }
