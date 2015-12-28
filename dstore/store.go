@@ -3,6 +3,7 @@ package dstore
 import (
 	"errors"
 	"math"
+	"sync"
 	"time"
 
 	"github.intra.douban.com/coresys/gobeansdb/loghub"
@@ -96,8 +97,89 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 	return
 }
 
-func (c *StorageClient) GetMulti(keys []string) (map[string]*mc.Item, error) {
-	return nil, nil
+func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets []string, err error) {
+	numKeys := len(keys)
+	rs = make(map[string]*mc.Item, numKeys)
+	hosts := c.scheduler.GetHostsByKey(keys[0])
+	suc := 0
+	for _, host := range hosts[:c.N] {
+		start := time.Now()
+		r, er := host.GetMulti(keys)
+		if er == nil {
+			suc += 1
+			if r != nil {
+				targets = append(targets, host.Addr)
+				t := float64(time.Now().Sub(start)) / 1e9 // t 的时间单位为秒
+				c.scheduler.Feedback(host, keys[0], 1-float64(math.Sqrt(t)*t))
+			}
+
+			for k, v := range r {
+				rs[k] = v
+			}
+			if len(rs) == numKeys {
+				break
+			}
+
+			newKeys := []string{}
+			for _, k := range keys {
+				if _, ok := rs[k]; !ok {
+					newKeys = append(newKeys, k)
+				}
+			}
+			keys = newKeys
+			if len(keys) == 0 {
+				break // repeated keys
+			}
+		} else {
+			if !isWaitForRetry(er) {
+				c.scheduler.Feedback(host, keys[0], -5)
+				err = er
+			} else {
+				if err == nil {
+					err = er
+				}
+				c.scheduler.Feedback(host, keys[0], -2)
+			}
+		}
+	}
+	if suc >= c.R {
+		err = nil
+	}
+	return
+}
+
+func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err error) {
+	var lock sync.Mutex
+	rs = make(map[string]*mc.Item, len(keys))
+
+	gs := c.scheduler.DivideKeysByBucket(keys)
+	reply := make(chan bool, len(gs))
+	for _, ks := range gs {
+		if len(ks) > 0 {
+			go func(keys []string) {
+				r, t, e := c.getMulti(keys)
+				if e != nil {
+					err = e
+				} else {
+					for k, v := range r {
+						lock.Lock()
+						rs[k] = v
+						c.SuccessedTargets = append(c.SuccessedTargets, t...)
+						lock.Unlock()
+					}
+				}
+				reply <- true
+			}(ks)
+		} else {
+			reply <- true
+		}
+	}
+
+	// wait for complete
+	for _, _ = range gs {
+		<-reply
+	}
+	return
 }
 
 func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {

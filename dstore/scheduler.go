@@ -240,7 +240,12 @@ func (sch *ManualScheduler) rewardNode(bucket int, node int, maxReward int) {
 }
 
 func (sch *ManualScheduler) DivideKeysByBucket(keys []string) [][]string {
-	return nil
+	rs := make([][]string, len(sch.buckets))
+	for _, key := range keys {
+		b := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
+		rs[b] = append(rs[b], key)
+	}
+	return rs
 }
 
 func (sch *ManualScheduler) Stats() map[int]map[string]float64 {

@@ -196,7 +196,12 @@ func (host *Host) Get(key string) (*mc.Item, error) {
 }
 
 func (host *Host) GetMulti(keys []string) (map[string]*mc.Item, error) {
-	return nil, nil
+	req := &mc.Request{Cmd: "get", Keys: keys}
+	resp, _, err := host.execute(req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
 }
 
 func (host *Host) Append(key string, value []byte) (bool, error) {
@@ -213,4 +218,12 @@ func (host *Host) Delete(key string) (bool, error) {
 
 func (host *Host) Process(key string, args []string) (string, string) {
 	return "", ""
+}
+
+func (host *Host) GetSuccessedTargets() []string {
+	return nil
+}
+
+func (host *Host) Clean() {
+	return
 }
