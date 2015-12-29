@@ -183,7 +183,6 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 }
 
 func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {
-	logger.Debugf("Set key=%s", key)
 	hosts := c.scheduler.GetHostsByKey(key)
 	if len(hosts) >= c.N {
 		mainSuc, mainTargets := c.setConcurrently(hosts[:c.N], key, item, noreply)

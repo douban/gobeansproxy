@@ -219,11 +219,3 @@ func (host *Host) Delete(key string) (bool, error) {
 func (host *Host) Process(key string, args []string) (string, string) {
 	return "", ""
 }
-
-func (host *Host) GetSuccessedTargets() []string {
-	return nil
-}
-
-func (host *Host) Clean() {
-	return
-}
