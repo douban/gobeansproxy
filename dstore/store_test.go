@@ -24,10 +24,10 @@ func freeItem(item *mc.Item) {
 	item.Free()
 }
 
-func testClientSet(t *testing.T, c mc.StorageClient, key string, val []byte, noreply bool) {
+func testClientSet(t *testing.T, c mc.StorageClient, key string, val []byte) {
 	assert := assert.New(t)
 	flag := 2
-	ok, err := clientSet(c, key, val, flag, noreply)
+	ok, err := clientSet(c, key, val, flag)
 	setHosts := c.GetSuccessedTargets()
 	c.Clean()
 	assert.True(ok)
@@ -43,9 +43,10 @@ func testClientSet(t *testing.T, c mc.StorageClient, key string, val []byte, nor
 	assert.True(hasIntersection(setHosts, getHosts))
 }
 
-func clientSet(c mc.StorageClient, key string, val []byte, flag int, noreply bool) (bool, error) {
+func clientSet(c mc.StorageClient, key string, val []byte, flag int) (bool, error) {
 	item := newItem(flag, val)
 	defer freeItem(item)
+	noreply := false
 	return c.Set(key, item, noreply)
 }
 
@@ -87,12 +88,11 @@ func testStoreClient(t *testing.T, c mc.StorageClient) {
 	// set
 	key2 := "/test/client/2"
 	val2 := []byte("value 2")
-	testClientSet(t, c, key2, val2, false)
+	testClientSet(t, c, key2, val2)
 
-	// set with noreply
 	key3 := "/test/client/3"
 	val3 := []byte("value 3")
-	testClientSet(t, c, key3, val3, true)
+	testClientSet(t, c, key3, val3)
 
 	// get multi
 	items, _ := c.GetMulti([]string{key1, key2, key3})
@@ -105,7 +105,7 @@ func testStoreClient(t *testing.T, c mc.StorageClient) {
 	valm := []byte("value multi")
 	for i := 0; i < keyNum; i++ {
 		keys[i] = fmt.Sprintf("/test/client/multi_%d", i)
-		ok, _ := clientSet(c, keys[i], valm, flagm, true)
+		ok, _ := clientSet(c, keys[i], valm, flagm)
 		c.Clean()
 		assert.True(ok)
 	}
@@ -117,7 +117,7 @@ func testStoreClient(t *testing.T, c mc.StorageClient) {
 	// large obj
 	key4 := "/test/client/4"
 	val4 := make([]byte, 1024*1000)
-	testClientSet(t, c, key4, val4, false)
+	testClientSet(t, c, key4, val4)
 }
 
 func TestStore(t *testing.T) {
