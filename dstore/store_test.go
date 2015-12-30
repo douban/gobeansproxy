@@ -113,6 +113,15 @@ func testStoreClient(t *testing.T, c mc.StorageClient) {
 	assert.Equal(3, v5)
 	v5, _ = c.Incr(key5, 5)
 	assert.Equal(8, v5)
+
+	// delete
+	key6 := "/test/client/6"
+	val6 := []byte("value 6")
+	testClientSet(t, c, key6, val6)
+	ok, _ := c.Delete(key6)
+	assert.True(ok)
+	v6, _ := c.Get(key6)
+	assert.Nil(v6)
 }
 
 func TestStore(t *testing.T) {

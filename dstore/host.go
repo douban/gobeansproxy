@@ -212,7 +212,7 @@ func (host *Host) Append(key string, value []byte) (bool, error) {
 	req := &mc.Request{Cmd: "append", Keys: []string{key}, Item: item}
 	resp, _, err := host.execute(req)
 	if err == nil {
-		return resp.Status == "STORED", err
+		return resp.Status == "STORED", nil
 	} else {
 		return false, err
 	}
@@ -231,7 +231,13 @@ func (host *Host) Incr(key string, value int) (int, error) {
 }
 
 func (host *Host) Delete(key string) (bool, error) {
-	return false, nil
+	req := &mc.Request{Cmd: "delete", Keys: []string{key}}
+	resp, _, err := host.execute(req)
+	if err == nil {
+		return resp.Status == "DELETED", nil
+	} else {
+		return false, err
+	}
 }
 
 func (host *Host) Process(key string, args []string) (string, string) {

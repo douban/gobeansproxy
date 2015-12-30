@@ -276,7 +276,6 @@ func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 			err = e
 			continue
 		}
-
 		// gobeansdb 的 incr 命令的返回值只有一个 int，当其为 0 时表示失败.
 		// 但是如果一个 key 的初始值为 0，proxy 就无法区分是否失败了。这里先不管
 		// key 初始值为 0 的情况了。
@@ -300,8 +299,41 @@ func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 	return
 }
 
-func (c *StorageClient) Delete(key string) (bool, error) {
-	return false, nil
+// TODO: 弄清楚为什么 delete 不遵循 NWR 规则
+func (c *StorageClient) Delete(key string) (flag bool, err error) {
+	suc := 0
+	errCnt := 0
+	failedHosts := make([]string, 2)
+	for i, host := range c.scheduler.GetHostsByKey(key) {
+		ok, err := host.Delete(key)
+		if ok {
+			suc++
+			c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
+		} else if err != nil {
+			errCnt++
+			failedHosts = append(failedHosts, host.Addr)
+			if i >= c.N {
+				continue
+			}
+			if !isWaitForRetry(err) {
+				c.scheduler.Feedback(host, key, -10)
+			}
+		}
+
+		// TODO: 弄清楚这里为什么不是 suc > c.W
+		if suc >= c.N {
+			break
+		}
+	}
+	if errCnt > 0 {
+		logger.Infof("key: %s was delete failed in %v, and the last error is %s",
+			key, failedHosts, err.Error())
+	}
+	if errCnt < 2 {
+		err = nil
+	}
+	flag = suc > 0
+	return
 }
 
 func (c *StorageClient) Len() int {
@@ -309,6 +341,7 @@ func (c *StorageClient) Len() int {
 }
 
 func (c *StorageClient) Close() {
+	return
 }
 
 func (c *StorageClient) Process(key string, args []string) (string, string) {
