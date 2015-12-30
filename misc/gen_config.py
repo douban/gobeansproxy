@@ -74,8 +74,8 @@ proxy_conf_tmpl = {
         'connect_timeout_ms': 300,
         'dial_fail_silence_ms': 5000,
         'max_free_conns_per_host': 20,
-        'n': 1,
-        'w': 1,
+        'n': 3,
+        'w': 2,
         'r': 1,
         'read_timeout_ms': 2000,
         'write_timeout_ms': 2000
@@ -170,7 +170,7 @@ def gen_server_conf(homedir, logdir, port, webport):
     tmpl = copy.deepcopy(gobeansdb_conf_tmpl)
     tmpl['hstore']['local']['homes'] = [homedir]
     tmpl['server']['errorlog'] = os.path.join(logdir, 'error.log')
-    tmpl['server']['accesslog'] = ""
+    tmpl['server']['accesslog'] = os.path.join(logdir, 'access.log')
     tmpl['server']['port'] = port
     tmpl['server']['webport'] = webport
     return tmpl

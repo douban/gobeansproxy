@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -218,7 +219,15 @@ func (host *Host) Append(key string, value []byte) (bool, error) {
 }
 
 func (host *Host) Incr(key string, value int) (int, error) {
-	return 0, nil
+	flag := 0
+	item := newItem(flag, []byte(strconv.Itoa(value)))
+	defer freeItem(item)
+	req := &mc.Request{Cmd: "incr", Keys: []string{key}, Item: item}
+	resp, _, err := host.execute(req)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(resp.Msg)
 }
 
 func (host *Host) Delete(key string) (bool, error) {

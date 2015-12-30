@@ -266,8 +266,38 @@ func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 	return
 }
 
-func (c *StorageClient) Incr(key string, value int) (int, error) {
-	return 0, nil
+// NOTE: Incr command may has consistency problem
+// link: http://github.intra.douban.com/coresys/gobeansproxy/issues/7
+func (c *StorageClient) Incr(key string, value int) (result int, err error) {
+	suc := 0
+	for i, host := range c.scheduler.GetHostsByKey(key) {
+		r, e := host.Incr(key, value)
+		if e != nil {
+			err = e
+			continue
+		}
+
+		// gobeansdb 的 incr 命令的返回值只有一个 int，当其为 0 时表示失败.
+		// 但是如果一个 key 的初始值为 0，proxy 就无法区分是否失败了。这里先不管
+		// key 初始值为 0 的情况了。
+		if r > 0 {
+			suc++
+			c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
+		}
+		if r > result {
+			result = r
+		}
+		if suc >= c.W && (i+1) >= c.N {
+			// at least try N backends, and succeed W backends
+			break
+		}
+	}
+	// 只要有一个返回成功就返回成功，因为 incr 操作不是可重入的，
+	// 总之最好不要用 incr 操作。
+	if result > 0 {
+		err = nil
+	}
+	return
 }
 
 func (c *StorageClient) Delete(key string) (bool, error) {

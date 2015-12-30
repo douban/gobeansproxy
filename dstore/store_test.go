@@ -106,6 +106,13 @@ func testStoreClient(t *testing.T, c mc.StorageClient) {
 	key4 := "/test/client/4"
 	val4 := make([]byte, 1024*1000)
 	testClientSet(t, c, key4, val4)
+
+	// incr
+	key5 := "/test/client/5"
+	v5, _ := c.Incr(key5, 3)
+	assert.Equal(3, v5)
+	v5, _ = c.Incr(key5, 5)
+	assert.Equal(8, v5)
 }
 
 func TestStore(t *testing.T) {
