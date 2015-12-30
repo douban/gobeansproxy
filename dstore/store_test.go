@@ -12,18 +12,6 @@ import (
 	"github.intra.douban.com/coresys/gobeansproxy/utils"
 )
 
-func newItem(flag int, val []byte) *mc.Item {
-	item := &mc.Item{Flag: flag}
-	length := len(val)
-	item.Alloc(length)
-	copy(item.CArray.Body, val)
-	return item
-}
-
-func freeItem(item *mc.Item) {
-	item.Free()
-}
-
 func testClientSet(t *testing.T, c mc.StorageClient, key string, val []byte) {
 	assert := assert.New(t)
 	flag := 2

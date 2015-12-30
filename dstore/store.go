@@ -240,8 +240,30 @@ func (c *StorageClient) setConcurrently(
 	return
 }
 
-func (c *StorageClient) Append(key string, value []byte) (bool, error) {
-	return false, nil
+func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
+	// NOTE: gobeansdb now do not support `append`, this is not tested.
+	suc := 0
+	for i, host := range c.scheduler.GetHostsByKey(key) {
+		if ok, err = host.Append(key, value); err == nil && ok {
+			suc++
+			c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
+		} else if !isWaitForRetry(err) {
+			c.scheduler.Feedback(host, key, -5)
+		}
+
+		if suc >= c.W && (i+1) >= c.N {
+			// at least try N backends, and succeed W backends
+			break
+		}
+	}
+	if suc < c.W {
+		ok = false
+		err = ErrWriteFailed
+	} else {
+		ok = true
+		err = nil
+	}
+	return
 }
 
 func (c *StorageClient) Incr(key string, value int) (int, error) {
@@ -261,4 +283,16 @@ func (c *StorageClient) Close() {
 
 func (c *StorageClient) Process(key string, args []string) (string, string) {
 	return "", ""
+}
+
+func newItem(flag int, val []byte) *mc.Item {
+	item := &mc.Item{Flag: flag}
+	length := len(val)
+	item.Alloc(length)
+	copy(item.CArray.Body, val)
+	return item
+}
+
+func freeItem(item *mc.Item) {
+	item.Free()
 }
