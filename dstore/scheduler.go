@@ -1,12 +1,20 @@
 package dstore
 
 import (
+	"math"
 	"math/rand"
 	"strconv"
 	"time"
 
 	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
 	dbutil "github.intra.douban.com/coresys/gobeansdb/utils"
+)
+
+const (
+	FeedbackNonConnectErrSet     = -10
+	FeedbackNonConnectErrDelete  = -10
+	FeedbackConnectErrDefault    = -2
+	FeedbackNonConnectErrDefault = -5
 )
 
 var (
@@ -17,6 +25,7 @@ var (
 type Scheduler interface {
 	// feedback for auto routing
 	Feedback(host *Host, key string, adjust float64)
+	FeedbackTime(host *Host, key string, timeUsed time.Duration)
 
 	// route a key to hosts
 	GetHostsByKey(key string) []*Host
@@ -155,6 +164,11 @@ type Feedback struct {
 func (sch *ManualScheduler) Feedback(host *Host, key string, adjust float64) {
 	bucket := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
 	sch.feedChan <- &Feedback{hostIndex: host.Index, bucket: bucket, adjust: adjust}
+}
+
+func (sch *ManualScheduler) FeedbackTime(host *Host, key string, timeUsed time.Duration) {
+	n := timeUsed.Seconds()
+	sch.Feedback(host, key, 1-float64(math.Sqrt(n)*n))
 }
 
 func (sch *ManualScheduler) procFeedback() {

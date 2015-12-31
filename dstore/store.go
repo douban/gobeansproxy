@@ -2,7 +2,6 @@ package dstore
 
 import (
 	"errors"
-	"math"
 	"sync"
 	"time"
 
@@ -69,21 +68,17 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 		if err == nil {
 			cnt++
 			if item != nil {
-				// t 是 Get 命令消耗的时间(单位是秒)
-				t := float64(time.Now().Sub(start)) / float64(time.Second)
-				// TODO: 这个公式的物理含义
-				c.scheduler.Feedback(host, key, 1-float64(math.Sqrt(t)*t))
+				c.scheduler.FeedbackTime(host, key, time.Now().Sub(start))
 				c.SuccessedTargets = []string{host.Addr}
 				return
 			} else {
 				c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
 			}
 		} else {
-			// TODO: 尽量解释下面两个 Magic Number 的含义
-			if !isWaitForRetry(err) {
-				c.scheduler.Feedback(host, key, -5)
+			if isWaitForRetry(err) {
+				c.scheduler.Feedback(host, key, FeedbackConnectErrDefault)
 			} else {
-				c.scheduler.Feedback(host, key, -2)
+				c.scheduler.Feedback(host, key, FeedbackNonConnectErrDefault)
 			}
 		}
 	}
@@ -109,8 +104,7 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 			suc += 1
 			if r != nil {
 				targets = append(targets, host.Addr)
-				t := float64(time.Now().Sub(start)) / 1e9 // t 的时间单位为秒
-				c.scheduler.Feedback(host, keys[0], 1-float64(math.Sqrt(t)*t))
+				c.scheduler.FeedbackTime(host, keys[0], time.Now().Sub(start))
 			}
 
 			for k, v := range r {
@@ -131,14 +125,14 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 				break // repeated keys
 			}
 		} else {
-			if !isWaitForRetry(er) {
-				c.scheduler.Feedback(host, keys[0], -5)
-				err = er
-			} else {
+			if isWaitForRetry(er) {
 				if err == nil {
 					err = er
 				}
-				c.scheduler.Feedback(host, keys[0], -2)
+				c.scheduler.Feedback(host, keys[0], FeedbackConnectErrDefault)
+			} else {
+				err = er
+				c.scheduler.Feedback(host, keys[0], FeedbackNonConnectErrDefault)
 			}
 		}
 	}
@@ -234,7 +228,7 @@ func (c *StorageClient) setConcurrently(
 			suc++
 			targets = append(targets, res.host.Addr)
 		} else if !isWaitForRetry(res.err) {
-			c.scheduler.Feedback(res.host, key, -10)
+			c.scheduler.Feedback(res.host, key, FeedbackNonConnectErrSet)
 		}
 	}
 	return
@@ -248,7 +242,7 @@ func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 			suc++
 			c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
 		} else if !isWaitForRetry(err) {
-			c.scheduler.Feedback(host, key, -5)
+			c.scheduler.Feedback(host, key, FeedbackNonConnectErrDefault)
 		}
 
 		if suc >= c.W && (i+1) >= c.N {
@@ -316,7 +310,7 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 				continue
 			}
 			if !isWaitForRetry(err) {
-				c.scheduler.Feedback(host, key, -10)
+				c.scheduler.Feedback(host, key, FeedbackNonConnectErrDelete)
 			}
 		}
 
