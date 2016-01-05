@@ -3,6 +3,7 @@ all:install
 GOPATH:=$(CURDIR)/../../../../
 export GOPATH
 export GO15VENDOREXPERIMENT=1
+export PYTHONPATH=.
 
 godep:
 	which godep >/dev/null 2>&1 || go get github.com/tools/godep
