@@ -18,5 +18,8 @@ test:
 	go test github.intra.douban.com/coresys/gobeansproxy/dstore
 	./misc/gobeansdb_server.sh stop
 
+pytest:install
+	./tests/run_test.sh
+
 install:
-	go install github.intra.douban.com/coresys/gobeansproxy/proxy
+	go install github.intra.douban.com/coresys/gobeansproxy/gobeansproxy

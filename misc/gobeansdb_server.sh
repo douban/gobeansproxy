@@ -11,7 +11,7 @@ prog="gobeansdb"
 
 function gen_conf()
 {
-    ./misc/gen_config.py -d $basedir
+    ./tests/gen_config.py -d $basedir
 }
 
 function start()

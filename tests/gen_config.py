@@ -4,8 +4,8 @@
 import os
 import yaml
 import copy
-import errno
 from os.path import join
+from tests.utils import mkdir_p
 
 
 gobeansdb_conf_tmpl = {
@@ -120,14 +120,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--root-dir', help="root directory")
     args = parser.parse_args()
-    gen_conf(os.path.abspath(args.root_dir))
+    gen_conf(os.path.abspath(args.root_dir),
+             MAIN_PORT_PAIRS,
+             BACKUP_PORT_PAIRS,
+             PROXY_PORT_PAIRS)
 
 
-def gen_conf(root_dir):
-    ports = [x[0] for x in MAIN_PORT_PAIRS]
-    backup_ports = [x[0] for x in BACKUP_PORT_PAIRS]
+def gen_conf(root_dir,
+             main_port_pairs=MAIN_PORT_PAIRS,
+             backup_port_pairs=BACKUP_PORT_PAIRS,
+             proxy_port_pairs=PROXY_PORT_PAIRS):
+    ports = [x[0] for x in main_port_pairs]
+    backup_ports = [x[0] for x in backup_port_pairs]
     route_conf = gen_route_conf(ports, backup_ports)
-
 
     ############# proxy
     # root_dir/proxy/conf/*.yaml
@@ -136,23 +141,27 @@ def gen_conf(root_dir):
     proxy_conf_dir = gen_dir(proxy_dir, 'conf')
 
     proxy_conf = gen_proxy_conf(proxy_dir,
-                                PROXY_PORT_PAIRS[0],
-                                PROXY_PORT_PAIRS[1])
+                                proxy_port_pairs[0],
+                                proxy_port_pairs[1])
     yaml_dump(proxy_conf, join(proxy_conf_dir, 'proxy.yaml'))
     yaml_dump(route_conf, join(proxy_conf_dir, 'route.yaml'))
 
+    for (port, webport) in (MAIN_PORT_PAIRS + BACKUP_PORT_PAIRS):
+        gen_gobeansdb_conf(root_dir, route_conf, port, webport)
+
+
+def gen_gobeansdb_conf(root_dir, route_conf, port, webport):
     ############# server
     # root_dir/<serverport>/conf/*.yaml
     # root_dir/<serverport>/data/
     # root_dir/<serverport>/*.log
-    for (port, webport) in (MAIN_PORT_PAIRS + BACKUP_PORT_PAIRS):
-        server_dir = gen_dir(root_dir, str(port))
-        server_conf_dir = gen_dir(server_dir, 'conf')
-        server_data_dir = gen_dir(server_dir, 'data')
+    server_dir = gen_dir(root_dir, str(port))
+    server_conf_dir = gen_dir(server_dir, 'conf')
+    server_data_dir = gen_dir(server_dir, 'data')
 
-        server_conf = gen_server_conf(server_data_dir, server_dir, port, webport)
-        yaml_dump(server_conf, join(server_conf_dir, 'global.yaml'))
-        yaml_dump(route_conf, join(server_conf_dir, 'route.yaml'))
+    server_conf = gen_server_conf(server_data_dir, server_dir, port, webport)
+    yaml_dump(server_conf, join(server_conf_dir, 'global.yaml'))
+    yaml_dump(route_conf, join(server_conf_dir, 'route.yaml'))
 
 
 def gen_dir(*args):
@@ -192,16 +201,6 @@ def gen_proxy_conf(logdir, port, webport):
     tmpl['proxy']['port'] = port
     tmpl['proxy']['webport'] = webport
     return tmpl
-
-
-def mkdir_p(path):
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
 
 
 if __name__ == '__main__':

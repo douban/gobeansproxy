@@ -16,6 +16,7 @@
           cd src/github.intra.douban.com/coresys/gobeansproxy/
           pwd
           make test
+          make pytest
     publishers:
       - email:
           recipients: zhuzhaolong@douban.com,yangxiufeng@douban.com
