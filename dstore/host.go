@@ -208,9 +208,9 @@ func (host *Host) GetMulti(keys []string) (map[string]*mc.Item, error) {
 func (host *Host) Append(key string, value []byte) (bool, error) {
 	flag := 0
 	item := newItem(flag, value)
-	defer freeItem(item)
 	req := &mc.Request{Cmd: "append", Keys: []string{key}, Item: item}
 	resp, _, err := host.execute(req)
+	item.Free()
 	if err == nil {
 		return resp.Status == "STORED", nil
 	} else {
@@ -221,9 +221,9 @@ func (host *Host) Append(key string, value []byte) (bool, error) {
 func (host *Host) Incr(key string, value int) (int, error) {
 	flag := 0
 	item := newItem(flag, []byte(strconv.Itoa(value)))
-	defer freeItem(item)
 	req := &mc.Request{Cmd: "incr", Keys: []string{key}, Item: item}
 	resp, _, err := host.execute(req)
+	item.Free()
 	if err != nil {
 		return 0, err
 	}

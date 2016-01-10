@@ -1,6 +1,5 @@
 # coding: utf-8
 import telnetlib
-from tests.dbclient import MCStore
 from tests.base import BaseTest
 
 

@@ -33,7 +33,7 @@ func testClientSet(t *testing.T, c mc.StorageClient, key string, val []byte) {
 
 func clientSet(c mc.StorageClient, key string, val []byte, flag int) (bool, error) {
 	item := newItem(flag, val)
-	defer freeItem(item)
+	defer item.Free()
 	noreply := false
 	return c.Set(key, item, noreply)
 }

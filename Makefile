@@ -9,7 +9,7 @@ godep:
 	which godep >/dev/null 2>&1 || go get github.com/tools/godep
 
 savedep: godep
-	rm -r Godeps
+	if [ -d "./Godeps" ]; then rm -r Godeps; fi
 	godep save ./...
 
 test:

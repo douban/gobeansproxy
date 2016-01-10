@@ -33,7 +33,7 @@ gobeansdb_conf_tmpl = {
     },
     'mc': {
         'body_big_str': '5M',
-        'body_c_str': '4K',
+        'body_c_str': '0K',
         'body_max_str': '50M',
         'max_key_len': 250,
         'max_req': 16
@@ -82,7 +82,7 @@ proxy_conf_tmpl = {
     },
     'mc': {
         'body_big_str': '5M',
-        'body_c_str': '4K',
+        'body_c_str': '0K',
         'body_max_str': '50M',
         'max_key_len': 250,
         'max_req': 16

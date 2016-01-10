@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.intra.douban.com/coresys/gobeansdb/cmem"
 	"github.intra.douban.com/coresys/gobeansdb/loghub"
 	mc "github.intra.douban.com/coresys/gobeansdb/memcache"
 
@@ -178,23 +179,25 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 
 func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {
 	hosts := c.scheduler.GetHostsByKey(key)
+	ok = false
+	err = ErrWriteFailed
 	if len(hosts) >= c.N {
 		mainSuc, mainTargets := c.setConcurrently(hosts[:c.N], key, item, noreply)
 		if mainSuc >= c.W {
 			ok = true
+			err = nil
 			c.SuccessedTargets = mainTargets
-			return
-		}
-
-		backupSuc, backupTargets := c.setConcurrently(hosts[c.N:], key, item, noreply)
-		if mainSuc+backupSuc >= c.W {
-			ok = true
-			c.SuccessedTargets = append(mainTargets, backupTargets...)
-			return
+		} else {
+			backupSuc, backupTargets := c.setConcurrently(hosts[c.N:], key, item, noreply)
+			if mainSuc+backupSuc >= c.W {
+				ok = true
+				err = nil
+				c.SuccessedTargets = append(mainTargets, backupTargets...)
+			}
 		}
 	}
-	ok = false
-	err = ErrWriteFailed
+	cmem.DBRL.SetData.SubSizeAndCount(item.Cap)
+	item.Free()
 	return
 }
 
@@ -290,6 +293,7 @@ func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 	if result > 0 {
 		err = nil
 	}
+	cmem.DBRL.SetData.SubCount(1)
 	return
 }
 
@@ -348,8 +352,4 @@ func newItem(flag int, val []byte) *mc.Item {
 	item.Alloc(length)
 	copy(item.CArray.Body, val)
 	return item
-}
-
-func freeItem(item *mc.Item) {
-	item.Free()
 }

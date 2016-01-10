@@ -237,7 +237,8 @@ func swap(a []int, j, k int) {
 
 func (sch *ManualScheduler) rewardNode(bucket int, node int, maxReward int) {
 	hostIdx := sch.buckets[bucket][node]
-	if _, err := sch.hosts[hostIdx].Get("@"); err == nil {
+	if item, err := sch.hosts[hostIdx].Get("@"); err == nil {
+		item.Free()
 		var reward float64 = 0.0
 		stat := sch.stats[bucket][hostIdx]
 		if stat < 0 {

@@ -25,6 +25,13 @@ class KeyVersionTest(BaseTest):
             assert(len(meta) == 7)
             return tuple([int(meta[i]) for i in [VERSION, CHUNKID, OFFSET]])
 
+    def test_incr(self):
+        store = MCStore(self.proxy.addr)
+        key = 'key1'
+        store.incr(key, 10)
+        self.assertEqual(store.get(key), 10)
+        self.checkCounterZero()
+
     def test_set_version(self):
         store = MCStore(self.proxy.addr)
         key = 'key1'

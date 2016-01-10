@@ -45,14 +45,13 @@ class BaseTest(unittest.TestCase):
             db.clean()
 
     def checkCounterZero(self):
-        pass
-        # time.sleep(0.5)
-        # content = gethttp(self.proxy.webaddr, '/buffers')
-        # buffers = json.loads(content)
-        # self.assertEqual(len(buffers), 4)
-        # for _, v in buffers.items():
-        #     self.assertEqual(v['Count'], 0, content)
-        #     self.assertEqual(v['Size'], 0, content)
+        time.sleep(0.5)
+        content = gethttp(self.proxy.webaddr, '/buffers')
+        buffers = json.loads(content)
+        self.assertEqual(len(buffers), 4)
+        for _, v in buffers.items():
+            self.assertEqual(v['Count'], 0, content)
+            self.assertEqual(v['Size'], 0, content)
 
 
 class BaseServerInstance(object):
