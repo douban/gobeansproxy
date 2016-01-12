@@ -68,11 +68,12 @@ func startWeb() {
 	http.Handle("/score/", &templateHandler{filename: "templates/score.html"})
 	http.Handle("/stats/", &templateHandler{filename: "templates/stats.html"})
 
-	http.HandleFunc("/config/", handleConfig)
-	http.HandleFunc("/requests/", handleRequests)
-	http.HandleFunc("/buffers/", handleBuffers)
-	http.HandleFunc("/memstats/", handleMemStates)
-	http.HandleFunc("/rusage/", handleRusage)
+	http.HandleFunc("/stats/config/", handleConfig)
+	http.HandleFunc("/stats/request/", handleRequest)
+	http.HandleFunc("/stats/buffer/", handleBuffer)
+	http.HandleFunc("/stats/memstat/", handleMemStat)
+	http.HandleFunc("/stats/rusage/", handleRusage)
+	http.HandleFunc("/stats/score/", handleScore)
 
 	webaddr := fmt.Sprintf("%s:%d", proxyConf.Listen, proxyConf.WebPort)
 	go func() {
@@ -87,7 +88,7 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 	handleJson(w, proxyConf)
 }
 
-func handleRequests(w http.ResponseWriter, r *http.Request) {
+func handleRequest(w http.ResponseWriter, r *http.Request) {
 	handleJson(w, mc.RL)
 }
 
@@ -97,13 +98,17 @@ func handleRusage(w http.ResponseWriter, r *http.Request) {
 	handleJson(w, rusage)
 }
 
-func handleMemStates(w http.ResponseWriter, r *http.Request) {
+func handleMemStat(w http.ResponseWriter, r *http.Request) {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	handleJson(w, ms)
 }
 
-func handleBuffers(w http.ResponseWriter, r *http.Request) {
-	defer handleWebPanic(w)
+func handleBuffer(w http.ResponseWriter, r *http.Request) {
 	handleJson(w, &cmem.DBRL)
+}
+
+func handleScore(w http.ResponseWriter, r *http.Request) {
+	scores := dstore.GetScheduler().Stats()
+	handleJson(w, scores)
 }

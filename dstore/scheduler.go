@@ -34,7 +34,7 @@ type Scheduler interface {
 	DivideKeysByBucket(keys []string) [][]string
 
 	// internal status
-	Stats() map[int]map[string]float64
+	Stats() map[string]map[string]float64
 }
 
 // route request by configure
@@ -263,12 +263,16 @@ func (sch *ManualScheduler) DivideKeysByBucket(keys []string) [][]string {
 	return rs
 }
 
-func (sch *ManualScheduler) Stats() map[int]map[string]float64 {
-	r := make(map[int]map[string]float64, len(sch.buckets))
+// Stats return the score of eache addr, it's used in web interface.
+// Result structure is { bucket1: {host1: score1, host2: score2, ...}, ... }
+func (sch *ManualScheduler) Stats() map[string]map[string]float64 {
+	r := make(map[string]map[string]float64, len(sch.buckets))
 	for i, hosts := range sch.buckets {
-		r[i] = make(map[string]float64, len(hosts))
+		// 由于 r 在 web 接口端需要转换为 JSON，而 JSON 的 key 只支持 string，
+		// 所以在这里把 key 转为 string
+		r[strconv.Itoa(i)] = make(map[string]float64, len(hosts))
 		for _, hostIdx := range hosts {
-			r[i][sch.hosts[hostIdx].Addr] = sch.stats[i][hostIdx]
+			r[strconv.Itoa(i)][sch.hosts[hostIdx].Addr] = sch.stats[i][hostIdx]
 		}
 	}
 	return r
