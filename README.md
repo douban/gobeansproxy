@@ -22,3 +22,5 @@ $ make test  # unit test
 ```
 $ ${GOHOME}/bin/proxy -h
 ```
+## CI Job Status 
+[![Build status](http://shields.dapps.douban.com/badge/qa-ci/peteris-coresys_gobeansproxy-master-unittest)](http://qa-ci.intra.douban.com/job/peteris-coresys_gobeansproxy-master-unittest)
