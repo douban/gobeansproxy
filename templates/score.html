@@ -1,0 +1,25 @@
+{{ define "body" }}
+  <div class="row">
+    <table class="table table-bordered sortable">
+    <h4>Score Stats</h4>
+    <thead>
+      <tr>
+        <th>Bucket</th>
+        <th>Host</th>
+        <th>Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ range $bucket, $hosts := .stats }}
+        {{ range $hostAddr, $score := $hosts }}
+        <tr>
+          <td>{{ $bucket }}</td>
+          <td>{{ $hostAddr }} </td>
+          <td>{{ $score }} </td>
+        </tr>
+        {{ end }}
+      {{ end }}
+    </tbody>
+    </table>
+  </div>
+{{ end }}

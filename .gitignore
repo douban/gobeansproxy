@@ -1,2 +1,6 @@
 .tags
 .tags_sorted_by_file
+*.py[c|o|~]
+*.log
+unittest.xml
+venv/

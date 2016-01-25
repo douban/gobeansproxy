@@ -4,7 +4,8 @@ proxy:
   port: 7905
   webport: 7908
   threads: 8
-  logdir: ./
+  errorlog:  "./proxy-error.log"
+  accesslog: "./proxy-access.log"
   hostname: 127.0.0.1
   staticdir: /var/lib/gobeansproxy
 mc:
@@ -12,7 +13,7 @@ mc:
   max_req: 16
   body_max_str: 50M
   body_big_str: 5M
-  body_c_str: 4K
+  body_c_str: 0K
 dstore:
   n: 3
   w: 2

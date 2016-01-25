@@ -4,8 +4,8 @@
 import os
 import yaml
 import copy
-import errno
 from os.path import join
+from tests.utils import mkdir_p
 
 
 gobeansdb_conf_tmpl = {
@@ -33,7 +33,7 @@ gobeansdb_conf_tmpl = {
     },
     'mc': {
         'body_big_str': '5M',
-        'body_c_str': '4K',
+        'body_c_str': '0K',
         'body_max_str': '50M',
         'max_key_len': 250,
         'max_req': 16
@@ -41,7 +41,8 @@ gobeansdb_conf_tmpl = {
     'server': {
         'hostname': '127.0.0.1',
         'listen': '0.0.0.0',
-        'logdir': '/var/log/gobeansdb',
+        'errorlog': '/var/log/gobeansdb/error.log',
+        'accesslog': '',
         'port': 7900,
         'threads': 4,
         'webport': 7903,
@@ -73,15 +74,15 @@ proxy_conf_tmpl = {
         'connect_timeout_ms': 300,
         'dial_fail_silence_ms': 5000,
         'max_free_conns_per_host': 20,
-        'n': 1,
-        'w': 1,
+        'n': 3,
+        'w': 2,
         'r': 1,
         'read_timeout_ms': 2000,
         'write_timeout_ms': 2000
     },
     'mc': {
         'body_big_str': '5M',
-        'body_c_str': '4K',
+        'body_c_str': '0K',
         'body_max_str': '50M',
         'max_key_len': 250,
         'max_req': 16
@@ -89,7 +90,8 @@ proxy_conf_tmpl = {
     'proxy': {
         'hostname': '127.0.0.1',
         'listen': '0.0.0.0',
-        'logdir': './',
+        'errorlog': '/var/log/gobeansproxy/error.log',
+        'accesslog': '/var/log/gobeansproxy/access.log',
         'port': 7905,
         'threads': 8,
         'webport': 7908
@@ -118,14 +120,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--root-dir', help="root directory")
     args = parser.parse_args()
-    gen_conf(os.path.abspath(args.root_dir))
+    gen_conf(os.path.abspath(args.root_dir),
+             MAIN_PORT_PAIRS,
+             BACKUP_PORT_PAIRS,
+             PROXY_PORT_PAIRS)
 
 
-def gen_conf(root_dir):
-    ports = [x[0] for x in MAIN_PORT_PAIRS]
-    backup_ports = [x[0] for x in BACKUP_PORT_PAIRS]
+def gen_conf(root_dir,
+             main_port_pairs=MAIN_PORT_PAIRS,
+             backup_port_pairs=BACKUP_PORT_PAIRS,
+             proxy_port_pairs=PROXY_PORT_PAIRS):
+    ports = [x[0] for x in main_port_pairs]
+    backup_ports = [x[0] for x in backup_port_pairs]
     route_conf = gen_route_conf(ports, backup_ports)
-
 
     ############# proxy
     # root_dir/proxy/conf/*.yaml
@@ -134,23 +141,27 @@ def gen_conf(root_dir):
     proxy_conf_dir = gen_dir(proxy_dir, 'conf')
 
     proxy_conf = gen_proxy_conf(proxy_dir,
-                                PROXY_PORT_PAIRS[0],
-                                PROXY_PORT_PAIRS[1])
+                                proxy_port_pairs[0],
+                                proxy_port_pairs[1])
     yaml_dump(proxy_conf, join(proxy_conf_dir, 'proxy.yaml'))
     yaml_dump(route_conf, join(proxy_conf_dir, 'route.yaml'))
 
+    for (port, webport) in (MAIN_PORT_PAIRS + BACKUP_PORT_PAIRS):
+        gen_gobeansdb_conf(root_dir, route_conf, port, webport)
+
+
+def gen_gobeansdb_conf(root_dir, route_conf, port, webport):
     ############# server
     # root_dir/<serverport>/conf/*.yaml
     # root_dir/<serverport>/data/
     # root_dir/<serverport>/*.log
-    for (port, webport) in (MAIN_PORT_PAIRS + BACKUP_PORT_PAIRS):
-        server_dir = gen_dir(root_dir, str(port))
-        server_conf_dir = gen_dir(server_dir, 'conf')
-        server_data_dir = gen_dir(server_dir, 'data')
+    server_dir = gen_dir(root_dir, str(port))
+    server_conf_dir = gen_dir(server_dir, 'conf')
+    server_data_dir = gen_dir(server_dir, 'data')
 
-        server_conf = gen_server_conf(server_data_dir, server_dir, port, webport)
-        yaml_dump(server_conf, join(server_conf_dir, 'global.yaml'))
-        yaml_dump(route_conf, join(server_conf_dir, 'route.yaml'))
+    server_conf = gen_server_conf(server_data_dir, server_dir, port, webport)
+    yaml_dump(server_conf, join(server_conf_dir, 'global.yaml'))
+    yaml_dump(route_conf, join(server_conf_dir, 'route.yaml'))
 
 
 def gen_dir(*args):
@@ -167,7 +178,8 @@ def yaml_dump(conf, filename):
 def gen_server_conf(homedir, logdir, port, webport):
     tmpl = copy.deepcopy(gobeansdb_conf_tmpl)
     tmpl['hstore']['local']['homes'] = [homedir]
-    tmpl['server']['logdir'] = logdir
+    tmpl['server']['errorlog'] = os.path.join(logdir, 'error.log')
+    tmpl['server']['accesslog'] = os.path.join(logdir, 'access.log')
     tmpl['server']['port'] = port
     tmpl['server']['webport'] = webport
     return tmpl
@@ -184,20 +196,11 @@ def gen_route_conf(ports, backup_ports, numbucket=16):
 
 def gen_proxy_conf(logdir, port, webport):
     tmpl = copy.deepcopy(proxy_conf_tmpl)
-    tmpl['proxy']['logdir'] = logdir
+    tmpl['proxy']['errorlog'] = os.path.join(logdir, 'error.log')
+    tmpl['proxy']['accesslog'] = os.path.join(logdir, 'access.log')
     tmpl['proxy']['port'] = port
     tmpl['proxy']['webport'] = webport
     return tmpl
-
-
-def mkdir_p(path):
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
 
 
 if __name__ == '__main__':

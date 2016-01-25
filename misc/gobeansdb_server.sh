@@ -11,7 +11,7 @@ prog="gobeansdb"
 
 function gen_conf()
 {
-    ./misc/gen_config.py -d $basedir
+    ./tests/gen_config.py -d $basedir
 }
 
 function start()
@@ -35,14 +35,15 @@ function stop()
         kill -TERM `ps -ef | grep "$cmd" | grep $port | grep -v grep | awk '{ print $2 }'`
         echo "Stopping the beansdb server on port '$port'... "
     fi
-    rm -rf $basedir
 }
 
 case "$1" in
     start)
         if [ -n "$2" ]; then
+            rm -rf $basedir/$port
             start $2
         else
+            rm -rf $basedir
             for port in $ports; do
                 start $port
             done
@@ -52,10 +53,12 @@ case "$1" in
         if [ -n "$2" ]; then
             port="$2"
             stop $port
+            rm -rf $basedir/$port
         else
             for port in $ports; do
                 stop $port
             done
+            rm -rf $basedir
         fi
         ;;
     restart)

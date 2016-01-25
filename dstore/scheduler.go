@@ -1,12 +1,20 @@
 package dstore
 
 import (
+	"math"
 	"math/rand"
 	"strconv"
 	"time"
 
 	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
 	dbutil "github.intra.douban.com/coresys/gobeansdb/utils"
+)
+
+const (
+	FeedbackNonConnectErrSet     = -10
+	FeedbackNonConnectErrDelete  = -10
+	FeedbackConnectErrDefault    = -2
+	FeedbackNonConnectErrDefault = -5
 )
 
 var (
@@ -17,6 +25,7 @@ var (
 type Scheduler interface {
 	// feedback for auto routing
 	Feedback(host *Host, key string, adjust float64)
+	FeedbackTime(host *Host, key string, timeUsed time.Duration)
 
 	// route a key to hosts
 	GetHostsByKey(key string) []*Host
@@ -25,7 +34,7 @@ type Scheduler interface {
 	DivideKeysByBucket(keys []string) [][]string
 
 	// internal status
-	Stats() map[int]map[string]float64
+	Stats() map[string]map[string]float64
 }
 
 // route request by configure
@@ -157,6 +166,11 @@ func (sch *ManualScheduler) Feedback(host *Host, key string, adjust float64) {
 	sch.feedChan <- &Feedback{hostIndex: host.Index, bucket: bucket, adjust: adjust}
 }
 
+func (sch *ManualScheduler) FeedbackTime(host *Host, key string, timeUsed time.Duration) {
+	n := timeUsed.Seconds()
+	sch.Feedback(host, key, 1-math.Sqrt(n)*n)
+}
+
 func (sch *ManualScheduler) procFeedback() {
 	sch.feedChan = make(chan *Feedback, 256)
 	for {
@@ -223,7 +237,8 @@ func swap(a []int, j, k int) {
 
 func (sch *ManualScheduler) rewardNode(bucket int, node int, maxReward int) {
 	hostIdx := sch.buckets[bucket][node]
-	if _, err := sch.hosts[hostIdx].Get("@"); err == nil {
+	if item, err := sch.hosts[hostIdx].Get("@"); err == nil {
+		item.Free()
 		var reward float64 = 0.0
 		stat := sch.stats[bucket][hostIdx]
 		if stat < 0 {
@@ -240,15 +255,24 @@ func (sch *ManualScheduler) rewardNode(bucket int, node int, maxReward int) {
 }
 
 func (sch *ManualScheduler) DivideKeysByBucket(keys []string) [][]string {
-	return nil
+	rs := make([][]string, len(sch.buckets))
+	for _, key := range keys {
+		b := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
+		rs[b] = append(rs[b], key)
+	}
+	return rs
 }
 
-func (sch *ManualScheduler) Stats() map[int]map[string]float64 {
-	r := make(map[int]map[string]float64, len(sch.buckets))
+// Stats return the score of eache addr, it's used in web interface.
+// Result structure is { bucket1: {host1: score1, host2: score2, ...}, ... }
+func (sch *ManualScheduler) Stats() map[string]map[string]float64 {
+	r := make(map[string]map[string]float64, len(sch.buckets))
 	for i, hosts := range sch.buckets {
-		r[i] = make(map[string]float64, len(hosts))
+		// 由于 r 在 web 接口端需要转换为 JSON，而 JSON 的 key 只支持 string，
+		// 所以在这里把 key 转为 string
+		r[strconv.Itoa(i)] = make(map[string]float64, len(hosts))
 		for _, hostIdx := range hosts {
-			r[i][sch.hosts[hostIdx].Addr] = sch.stats[i][hostIdx]
+			r[strconv.Itoa(i)][sch.hosts[hostIdx].Addr] = sch.stats[i][hostIdx]
 		}
 	}
 	return r

@@ -30,13 +30,15 @@ var (
 	}
 
 	DefaultServerConfig = ServerConfig{
-		Hostname: "127.0.0.1",
-		Listen:   "0.0.0.0",
-		Port:     7900,
-		WebPort:  7903,
-		Threads:  4,
-		ZK:       "NO",
-		LogDir:   "./",
+		Hostname:  "127.0.0.1",
+		Listen:    "0.0.0.0",
+		Port:      7900,
+		WebPort:   7903,
+		Threads:   4,
+		ZK:        "NO",
+		ErrorLog:  "./gobeansdb.log",
+		AccessLog: "",
+		StaticDir: "./",
 	}
 
 	DefaultHintConfig = HintConfig{
@@ -64,12 +66,13 @@ var (
 	}
 
 	//DefaultRouteConfig = route.RouteConfig{NumBucket: 256, Buckets: make([]int, 256)}
-	DefaultRouteConfig = DBRouteConfig{NumBucket: 16, Buckets: make([]int, 16)}
+	DefaultRouteConfig = DBRouteConfig{NumBucket: 16, BucketsStat: make([]int, 16)}
 )
 
 func init() {
 	for i := 0; i < DefaultRouteConfig.NumBucket; i++ {
-		DefaultRouteConfig.Buckets[i] = 1
+		DefaultRouteConfig.BucketsStat[i] = 1
+		DefaultRouteConfig.BucketsHex = append(DefaultRouteConfig.BucketsHex, BucketIDHex(i, DefaultRouteConfig.NumBucket))
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -196,19 +197,47 @@ func (host *Host) Get(key string) (*mc.Item, error) {
 }
 
 func (host *Host) GetMulti(keys []string) (map[string]*mc.Item, error) {
-	return nil, nil
+	req := &mc.Request{Cmd: "get", Keys: keys}
+	resp, _, err := host.execute(req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
 }
 
 func (host *Host) Append(key string, value []byte) (bool, error) {
-	return false, nil
+	flag := 0
+	item := newItem(flag, value)
+	req := &mc.Request{Cmd: "append", Keys: []string{key}, Item: item}
+	resp, _, err := host.execute(req)
+	item.Free()
+	if err == nil {
+		return resp.Status == "STORED", nil
+	} else {
+		return false, err
+	}
 }
 
 func (host *Host) Incr(key string, value int) (int, error) {
-	return 0, nil
+	flag := 0
+	item := newItem(flag, []byte(strconv.Itoa(value)))
+	req := &mc.Request{Cmd: "incr", Keys: []string{key}, Item: item}
+	resp, _, err := host.execute(req)
+	item.Free()
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(resp.Msg)
 }
 
 func (host *Host) Delete(key string) (bool, error) {
-	return false, nil
+	req := &mc.Request{Cmd: "delete", Keys: []string{key}}
+	resp, _, err := host.execute(req)
+	if err == nil {
+		return resp.Status == "DELETED", nil
+	} else {
+		return false, err
+	}
 }
 
 func (host *Host) Process(key string, args []string) (string, string) {
