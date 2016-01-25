@@ -168,7 +168,7 @@ func (sch *ManualScheduler) Feedback(host *Host, key string, adjust float64) {
 
 func (sch *ManualScheduler) FeedbackTime(host *Host, key string, timeUsed time.Duration) {
 	n := timeUsed.Seconds()
-	sch.Feedback(host, key, 1-float64(math.Sqrt(n)*n))
+	sch.Feedback(host, key, 1-math.Sqrt(n)*n)
 }
 
 func (sch *ManualScheduler) procFeedback() {

@@ -301,7 +301,7 @@ func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 func (c *StorageClient) Delete(key string) (flag bool, err error) {
 	suc := 0
 	errCnt := 0
-	failedHosts := make([]string, 2)
+	failedHosts := make([]string, 0, 2)
 	for i, host := range c.scheduler.GetHostsByKey(key) {
 		ok, err := host.Delete(key)
 		if ok {
@@ -324,7 +324,7 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 		}
 	}
 	if errCnt > 0 {
-		logger.Infof("key: %s was delete failed in %v, and the last error is %s",
+		logger.Warnf("key: %s was delete failed in %v, and the last error is %s",
 			key, failedHosts, err.Error())
 	}
 	if errCnt < 2 {
