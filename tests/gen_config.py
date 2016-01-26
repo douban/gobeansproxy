@@ -92,6 +92,7 @@ proxy_conf_tmpl = {
         'listen': '0.0.0.0',
         'errorlog': '/var/log/gobeansproxy/error.log',
         'accesslog': '/var/log/gobeansproxy/access.log',
+        'staticdir': '/var/lib/gobeansproxy',
         'port': 7905,
         'threads': 8,
         'webport': 7908

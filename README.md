@@ -2,7 +2,11 @@
 
 A proxy for Gobeansdb.
 
-# Install
+## CI Status
+[![Build status](http://shields.dapps.douban.com/badge/qa-ci/peteris-coresys_gobeansproxy-master-unittest)](http://qa-ci.intra.douban.com/job/peteris-coresys_gobeansproxy-master-unittest)
+
+
+## Install
 
 ```
 $ cd ${GOHOME}
@@ -11,16 +15,14 @@ $ cd src/github.intra.douban.com/coresys/gobeansproxy
 $ make
 ```
 
-# test
+## test
 
 ```
 $ make test  # unit test
 ```
 
-# run
+## run
 
 ```
 $ ${GOHOME}/bin/proxy -h
 ```
-## CI Job Status 
-[![Build status](http://shields.dapps.douban.com/badge/qa-ci/peteris-coresys_gobeansproxy-master-unittest)](http://qa-ci.intra.douban.com/job/peteris-coresys_gobeansproxy-master-unittest)

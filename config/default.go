@@ -14,7 +14,7 @@ var (
 		ZK:        "NO",
 		ErrorLog:  "./proxy-error.log",
 		AccessLog: "./proxy-access.log",
-		StaticDir: "/var/lib/gobeansdb",
+		StaticDir: "/var/lib/gobeansproxy",
 	}
 
 	DefaultDStoreConfig = DStoreConfig{
