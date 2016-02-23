@@ -14,7 +14,6 @@ gobeansdb_conf_tmpl = {
             'check_vhash': True,
             'datafile_max_str': '4000M',
             'flush_interval': 60,
-            'flush_max_str': '100M',
             'flush_wake_str': '10M',
             'no_gc_days': 7,
         },
@@ -34,6 +33,7 @@ gobeansdb_conf_tmpl = {
     'mc': {
         'body_big_str': '5M',
         'body_c_str': '0K',
+        'flush_max_str': '100M',
         'body_max_str': '50M',
         'max_key_len': 250,
         'max_req': 16
