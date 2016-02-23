@@ -18,5 +18,7 @@
           make test
           make pytest
     publishers:
+      - junit:
+          results: src/github.intra.douban.com/coresys/gobeansproxy/unittest.xml
       - email:
           recipients: zhuzhaolong@douban.com,yangxiufeng@douban.com
