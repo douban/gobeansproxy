@@ -5,6 +5,7 @@ import (
 	"path"
 
 	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
+	dbutils "github.intra.douban.com/coresys/gobeansdb/utils"
 )
 
 const (
@@ -39,6 +40,11 @@ func (c *ProxyConfig) InitDefault() {
 	c.DStoreConfig = DefaultDStoreConfig
 }
 
+func (c *ProxyConfig) ConfigPackages() {
+	dbcfg.ServerConf = c.ServerConfig
+	dbcfg.MCConf = c.MCConfig
+}
+
 func (c *ProxyConfig) Load(confdir string) {
 	if confdir != "" {
 		var f string
@@ -58,6 +64,8 @@ func (c *ProxyConfig) Load(confdir string) {
 		}
 		checkConfig(c, Route)
 	}
+	dbutils.InitSizesPointer(c)
+	c.ConfigPackages()
 }
 
 func checkConfig(proxy *ProxyConfig, route *dbcfg.RouteTable) {
