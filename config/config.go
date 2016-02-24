@@ -43,6 +43,7 @@ func (c *ProxyConfig) InitDefault() {
 func (c *ProxyConfig) ConfigPackages() {
 	dbcfg.ServerConf = c.ServerConfig
 	dbcfg.MCConf = c.MCConfig
+	dbcfg.Version = Version
 }
 
 func (c *ProxyConfig) Load(confdir string) {
