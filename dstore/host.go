@@ -159,6 +159,7 @@ func (host *Host) executeWithTimeout(req *mc.Request, timeout time.Duration) (re
 		if isTimeout && err == nil {
 			logger.Infof("request %v to host %s return after timeout, use %d ms",
 				req, host.Addr, delta/1e6)
+			resp.CleanBuffer()
 		}
 	}()
 
