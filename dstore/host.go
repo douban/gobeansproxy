@@ -150,27 +150,35 @@ func (host *Host) execute(req *mc.Request) (resp *mc.Response, delta time.Durati
 }
 
 func (host *Host) executeWithTimeout(req *mc.Request, timeout time.Duration) (resp *mc.Response, err error) {
-	done := make(chan bool, 1)
-	isTimeout := false
+	var tmpErr error
+	var tmpResp *mc.Response
+	done := make(chan bool)
+	isTimeout := make(chan bool, 1)
+
 	go func() {
 		var delta time.Duration
-		resp, delta, err = host.execute(req)
-		done <- true
-		if isTimeout && err == nil {
+		tmpResp, delta, tmpErr = host.execute(req)
+		select {
+		case done <- true:
+		case <-isTimeout:
 			logger.Infof("request %v to host %s return after timeout, use %d ms",
 				req, host.Addr, delta/1e6)
-			resp.CleanBuffer()
+			if tmpResp != nil {
+				tmpResp.CleanBuffer()
+			}
 		}
 	}()
 
 	select {
 	case <-done:
+		resp = tmpResp
+		err = tmpErr
 	case <-time.After(timeout):
-		isTimeout = true
+		isTimeout <- true
 		err = fmt.Errorf("request %v timeout", req)
 		logger.Infof("request %v to host %s timeout", req, host.Addr)
 	}
-	return
+	return resp, err
 }
 
 func (host *Host) Len() int {
