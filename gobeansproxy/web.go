@@ -27,7 +27,6 @@ func handleWebPanic(w http.ResponseWriter) {
 }
 
 func handleJson(w http.ResponseWriter, v interface{}) {
-	defer handleWebPanic(w)
 	b, err := json.Marshal(v)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -84,29 +83,35 @@ func startWeb() {
 }
 
 func handleConfig(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
 	handleJson(w, proxyConf)
 }
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
 	handleJson(w, mc.RL)
 }
 
 func handleRusage(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
 	rusage := utils.Getrusage()
 	handleJson(w, rusage)
 }
 
 func handleMemStat(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	handleJson(w, ms)
 }
 
 func handleBuffer(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
 	handleJson(w, &cmem.DBRL)
 }
 
 func handleScore(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
 	scores := dstore.GetScheduler().Stats()
 	handleJson(w, scores)
 }
