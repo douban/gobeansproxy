@@ -11,14 +11,15 @@ import (
 )
 
 // `Version` can be changed in gobeansproxy.
-var Version = "2.1.0.9"
+var Version = "2.1.0.10"
 
 const AccessLogVersion = "V1"
 
 var (
-	ServerConf ServerConfig = DefaultServerConfig
-	Route      RouteTable
-	MCConf     MCConfig = DefaultMCConfig
+	ServerConf  ServerConfig = DefaultServerConfig
+	Route       RouteTable
+	MCConf      MCConfig = DefaultMCConfig
+	AllowReload bool
 )
 
 func init() {
