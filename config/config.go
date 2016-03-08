@@ -48,21 +48,33 @@ func (c *ProxyConfig) ConfigPackages() {
 
 func (c *ProxyConfig) Load(confdir string) {
 	if confdir != "" {
-		var f string
+		var err error
 
 		// proxy
-		f = path.Join(confdir, "proxy.yaml")
-		if err := dbcfg.LoadYamlConfig(c, f); err != nil {
-			log.Fatalf("bad config %s: %s", f, err.Error())
+		proxyPath := path.Join(confdir, "proxy.yaml")
+		if err = dbcfg.LoadYamlConfig(c, proxyPath); err != nil {
+			log.Fatalf("bad config %s: %s", proxyPath, err.Error())
 		}
 
 		// route
-		f = path.Join(confdir, "route.yaml")
-		if route, err := dbcfg.LoadRouteTable(f, c.ZK); err != nil {
-			log.Fatalf("bad config %s: %s", f, err.Error())
-		} else {
-			Route = route
+		routePath := path.Join(confdir, "route.yaml")
+		var route *dbcfg.RouteTable
+
+		if len(c.ZKServers) > 0 {
+			route, err = dbcfg.LoadRouteTableZK(routePath, c.ZKPath, c.ZKServers)
+			if err != nil {
+				log.Printf("fail to load route table from zk: %s, err: %s", c.ZKPath, err.Error())
+			}
 		}
+
+		if len(c.ZKServers) == 0 || err != nil {
+			route, err = dbcfg.LoadRouteTableLocal(routePath)
+		}
+		if err != nil {
+			log.Fatal("fail to load route table: %s", err.Error())
+		}
+
+		Route = route
 		checkConfig(c, Route)
 	}
 	dbutils.InitSizesPointer(c)

@@ -35,6 +35,8 @@ type Scheduler interface {
 
 	// internal status
 	Stats() map[string]map[string]float64
+
+	Close()
 }
 
 // route request by configure
@@ -58,6 +60,8 @@ type ManualScheduler struct {
 
 	// 传递 feedback 信息
 	feedChan chan *Feedback
+
+	quit bool
 }
 
 func GetScheduler() Scheduler {
@@ -102,6 +106,9 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 	go sch.procFeedback()
 	go func() {
 		for {
+			if sch.quit {
+				return
+			}
 			sch.tryReward()
 			time.Sleep(5 * time.Second)
 		}
@@ -174,6 +181,9 @@ func (sch *ManualScheduler) FeedbackTime(host *Host, key string, timeUsed time.D
 func (sch *ManualScheduler) procFeedback() {
 	sch.feedChan = make(chan *Feedback, 256)
 	for {
+		if sch.quit {
+			return
+		}
 		fb := <-sch.feedChan
 		sch.feedback(fb.hostIndex, fb.bucket, fb.adjust)
 	}
@@ -276,4 +286,8 @@ func (sch *ManualScheduler) Stats() map[string]map[string]float64 {
 		}
 	}
 	return r
+}
+
+func (sch *ManualScheduler) Close() {
+	sch.quit = true
 }

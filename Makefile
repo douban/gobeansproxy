@@ -19,6 +19,10 @@ test:
 	go test github.intra.douban.com/coresys/gobeansproxy/dstore
 	./misc/gobeansdb_server.sh stop
 
+template:
+	rm -r /var/lib/gobeansproxy/templates
+	cp -r templates /var/lib/gobeansproxy/
+
 pytest:install
 	./tests/run_test.sh
 
