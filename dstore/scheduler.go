@@ -18,7 +18,7 @@ const (
 )
 
 var (
-	manualScheduler Scheduler
+	globalScheduler Scheduler
 )
 
 // Scheduler: route request to nodes
@@ -65,11 +65,11 @@ type ManualScheduler struct {
 }
 
 func GetScheduler() Scheduler {
-	return manualScheduler
+	return globalScheduler
 }
 
 func InitGlobalManualScheduler(route *dbcfg.RouteTable, n int) {
-	manualScheduler = NewManualScheduler(route, n)
+	globalScheduler = NewManualScheduler(route, n)
 }
 
 func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
