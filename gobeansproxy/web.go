@@ -184,6 +184,7 @@ func handleRouteReload(w http.ResponseWriter, r *http.Request) {
 	dbcfg.ZKClient.Stat = stat
 	w.Write([]byte("success"))
 
-	time.Sleep(time.Duration(proxyConf.ConnectTimeoutMs) * time.Millisecond)
+	// sleep for request to be completed.
+	time.Sleep(time.Duration(proxyConf.ReadTimeoutMs) * time.Millisecond * 5)
 	oldScheduler.Close()
 }

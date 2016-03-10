@@ -107,7 +107,9 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 	go func() {
 		for {
 			if sch.quit {
-				return
+				logger.Infof("close tryReward goroutine")
+				close(sch.feedChan)
+				break
 			}
 			sch.tryReward()
 			time.Sleep(5 * time.Second)
@@ -181,10 +183,12 @@ func (sch *ManualScheduler) FeedbackTime(host *Host, key string, timeUsed time.D
 func (sch *ManualScheduler) procFeedback() {
 	sch.feedChan = make(chan *Feedback, 256)
 	for {
-		if sch.quit {
-			return
+		fb, ok := <-sch.feedChan
+		if !ok {
+			// channel was closed
+			logger.Infof("close procFeedback goroutine")
+			break
 		}
-		fb := <-sch.feedChan
 		sch.feedback(fb.hostIndex, fb.bucket, fb.adjust)
 	}
 }
