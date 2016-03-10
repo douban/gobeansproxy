@@ -166,7 +166,7 @@ func handleRouteReload(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	if stat.Version == dbcfg.ZKClient.Stat.Version {
+	if dbcfg.ZKClient.Stat != nil && stat.Version == dbcfg.ZKClient.Stat.Version {
 		w.Write([]byte(fmt.Sprintf("same version %d", stat.Version)))
 		return
 	}
@@ -184,7 +184,9 @@ func handleRouteReload(w http.ResponseWriter, r *http.Request) {
 	dbcfg.ZKClient.Stat = stat
 	w.Write([]byte("success"))
 
-	// sleep for request to be completed.
-	time.Sleep(time.Duration(proxyConf.ReadTimeoutMs) * time.Millisecond * 5)
-	oldScheduler.Close()
+	go func() {
+		// sleep for request to be completed.
+		time.Sleep(time.Duration(proxyConf.ReadTimeoutMs) * time.Millisecond * 5)
+		oldScheduler.Close()
+	}()
 }
