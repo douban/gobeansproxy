@@ -18,7 +18,7 @@ const (
 )
 
 var (
-	manualScheduler Scheduler
+	globalScheduler Scheduler
 )
 
 // Scheduler: route request to nodes
@@ -35,6 +35,8 @@ type Scheduler interface {
 
 	// internal status
 	Stats() map[string]map[string]float64
+
+	Close()
 }
 
 // route request by configure
@@ -58,14 +60,16 @@ type ManualScheduler struct {
 
 	// 传递 feedback 信息
 	feedChan chan *Feedback
+
+	quit bool
 }
 
 func GetScheduler() Scheduler {
-	return manualScheduler
+	return globalScheduler
 }
 
 func InitGlobalManualScheduler(route *dbcfg.RouteTable, n int) {
-	manualScheduler = NewManualScheduler(route, n)
+	globalScheduler = NewManualScheduler(route, n)
 }
 
 func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
@@ -102,6 +106,11 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 	go sch.procFeedback()
 	go func() {
 		for {
+			if sch.quit {
+				logger.Infof("close tryReward goroutine")
+				close(sch.feedChan)
+				break
+			}
 			sch.tryReward()
 			time.Sleep(5 * time.Second)
 		}
@@ -174,7 +183,12 @@ func (sch *ManualScheduler) FeedbackTime(host *Host, key string, timeUsed time.D
 func (sch *ManualScheduler) procFeedback() {
 	sch.feedChan = make(chan *Feedback, 256)
 	for {
-		fb := <-sch.feedChan
+		fb, ok := <-sch.feedChan
+		if !ok {
+			// channel was closed
+			logger.Infof("close procFeedback goroutine")
+			break
+		}
 		sch.feedback(fb.hostIndex, fb.bucket, fb.adjust)
 	}
 }
@@ -276,4 +290,8 @@ func (sch *ManualScheduler) Stats() map[string]map[string]float64 {
 		}
 	}
 	return r
+}
+
+func (sch *ManualScheduler) Close() {
+	sch.quit = true
 }

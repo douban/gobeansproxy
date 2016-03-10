@@ -6,6 +6,7 @@ import (
 	"log"
 	"runtime"
 
+	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
 	"github.intra.douban.com/coresys/gobeansdb/loghub"
 	mc "github.intra.douban.com/coresys/gobeansdb/memcache"
 
@@ -63,6 +64,7 @@ func main() {
 	log.Printf("ready")
 
 	server.HandleSignals(proxyConf.ErrorLog, proxyConf.AccessLog)
+	dbcfg.AllowReload = true
 	startWeb()
 	server.Serve()
 }

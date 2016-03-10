@@ -95,7 +95,9 @@ proxy_conf_tmpl = {
         'staticdir': '/var/lib/gobeansproxy',
         'port': 7905,
         'threads': 8,
-        'webport': 7908
+        'webport': 7908,
+        'zkservers': ["zk1:2181"],
+        'zkpath': "/gobeansproxy/test",
     }
 }
 

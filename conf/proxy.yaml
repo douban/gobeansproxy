@@ -8,6 +8,8 @@ proxy:
   accesslog: "./proxy-access.log"
   hostname: 127.0.0.1
   staticdir: /var/lib/gobeansproxy
+  zkserves: []
+  zkpath: "/gobeansproxy/test"
 mc:
   max_key_len: 250
   max_req: 16

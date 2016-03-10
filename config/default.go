@@ -11,7 +11,7 @@ var (
 		Port:      7905,
 		WebPort:   7908,
 		Threads:   8,
-		ZK:        "NO",
+		ZKServers: nil,
 		ErrorLog:  "./proxy-error.log",
 		AccessLog: "./proxy-access.log",
 		StaticDir: "/var/lib/gobeansproxy",

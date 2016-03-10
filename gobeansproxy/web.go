@@ -9,11 +9,16 @@ import (
 	"runtime"
 	"sync"
 	"text/template"
+	"time"
+
+	"gopkg.in/yaml.v2"
 
 	"github.intra.douban.com/coresys/gobeansdb/cmem"
+	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
 	mc "github.intra.douban.com/coresys/gobeansdb/memcache"
 	"github.intra.douban.com/coresys/gobeansdb/utils"
 
+	"github.intra.douban.com/coresys/gobeansproxy/config"
 	"github.intra.douban.com/coresys/gobeansproxy/dstore"
 )
 
@@ -23,6 +28,16 @@ func handleWebPanic(w http.ResponseWriter) {
 		stack := utils.GetStack(2000)
 		logger.Errorf("web req panic:%#v, stack:%s", r, stack)
 		fmt.Fprintf(w, "\npanic:%#v, stack:%s", r, stack)
+	}
+}
+
+func handleYaml(w http.ResponseWriter, v interface{}) {
+	defer handleWebPanic(w)
+	b, err := yaml.Marshal(v)
+	if err != nil {
+		w.Write([]byte(err.Error()))
+	} else {
+		w.Write(b)
 	}
 }
 
@@ -73,6 +88,9 @@ func startWeb() {
 	http.HandleFunc("/stats/rusage/", handleRusage)
 	http.HandleFunc("/stats/score/", handleScore)
 
+	http.HandleFunc("/stats/route/", handleRoute)
+	http.HandleFunc("/stats/route/reload", handleRouteReload)
+
 	webaddr := fmt.Sprintf("%s:%d", proxyConf.Listen, proxyConf.WebPort)
 	go func() {
 		logger.Infof("HTTP listen at %s", webaddr)
@@ -114,4 +132,59 @@ func handleScore(w http.ResponseWriter, r *http.Request) {
 	defer handleWebPanic(w)
 	scores := dstore.GetScheduler().Stats()
 	handleJson(w, scores)
+}
+
+func handleRoute(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
+	handleYaml(w, config.Route)
+}
+
+func handleRouteReload(w http.ResponseWriter, r *http.Request) {
+	var err error
+	if !dbcfg.AllowReload {
+		w.Write([]byte("reloading"))
+		return
+	}
+
+	dbcfg.AllowReload = false
+	defer func() {
+		dbcfg.AllowReload = true
+		if err != nil {
+			logger.Errorf("handleRoute err", err.Error())
+			w.Write([]byte(fmt.Sprintf(err.Error())))
+			return
+		}
+	}()
+
+	if len(proxyConf.ZKServers) == 0 {
+		w.Write([]byte("not using zookeeper"))
+		return
+	}
+
+	defer handleWebPanic(w)
+	newRouteContent, stat, err := dbcfg.ZKClient.GetRouteRaw()
+	if err != nil {
+		return
+	}
+	if stat.Version == dbcfg.ZKClient.Stat.Version {
+		w.Write([]byte(fmt.Sprintf("same version %d", stat.Version)))
+		return
+	}
+	info := fmt.Sprintf("update with route version %d\n", stat.Version)
+	logger.Infof(info)
+	newRoute := new(dbcfg.RouteTable)
+	err = newRoute.LoadFromYaml(newRouteContent)
+	if err != nil {
+		return
+	}
+
+	oldScheduler := dstore.GetScheduler()
+	dstore.InitGlobalManualScheduler(newRoute, proxyConf.N)
+	config.Route = newRoute
+	dbcfg.ZKClient.Stat = stat
+	w.Write([]byte("success"))
+
+	// sleep for request to be completed.
+	time.Sleep(time.Duration(proxyConf.ReadTimeoutMs) * time.Millisecond * 5)
+	oldScheduler.Close()
 }

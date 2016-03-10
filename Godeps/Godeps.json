@@ -14,29 +14,33 @@
 			"Rev": "e8554b8641db39598be7f6342874b958f12ae1d4"
 		},
 		{
+			"ImportPath": "github.com/samuel/go-zookeeper/zk",
+			"Rev": "218e9c81c0dd8b3b18172b2bbfad92cc7d6db55f"
+		},
+		{
 			"ImportPath": "github.com/stretchr/testify/assert",
 			"Comment": "v1.0-88-ge3a8ff8",
 			"Rev": "e3a8ff8ce36581f87a15341206f205b1da467059"
 		},
 		{
 			"ImportPath": "github.intra.douban.com/coresys/gobeansdb/cmem",
-			"Rev": "d3989f9cc64bce6698896e8075d9e2997e4737be"
+			"Rev": "f1d1525fdbf6b6d7736e8b3122f3334d2d65bab8"
 		},
 		{
 			"ImportPath": "github.intra.douban.com/coresys/gobeansdb/config",
-			"Rev": "d3989f9cc64bce6698896e8075d9e2997e4737be"
+			"Rev": "f1d1525fdbf6b6d7736e8b3122f3334d2d65bab8"
 		},
 		{
 			"ImportPath": "github.intra.douban.com/coresys/gobeansdb/loghub",
-			"Rev": "d3989f9cc64bce6698896e8075d9e2997e4737be"
+			"Rev": "f1d1525fdbf6b6d7736e8b3122f3334d2d65bab8"
 		},
 		{
 			"ImportPath": "github.intra.douban.com/coresys/gobeansdb/memcache",
-			"Rev": "d3989f9cc64bce6698896e8075d9e2997e4737be"
+			"Rev": "f1d1525fdbf6b6d7736e8b3122f3334d2d65bab8"
 		},
 		{
 			"ImportPath": "github.intra.douban.com/coresys/gobeansdb/utils",
-			"Rev": "d3989f9cc64bce6698896e8075d9e2997e4737be"
+			"Rev": "f1d1525fdbf6b6d7736e8b3122f3334d2d65bab8"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",

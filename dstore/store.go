@@ -26,7 +26,7 @@ type Storage struct {
 }
 
 func (s *Storage) Client() mc.StorageClient {
-	return NewStorageClient(manualScheduler, proxyConf.N, proxyConf.W, proxyConf.R)
+	return NewStorageClient(proxyConf.N, proxyConf.W, proxyConf.R)
 }
 
 // client for gobeansdb
@@ -35,16 +35,12 @@ type StorageClient struct {
 	// successfully.
 	SuccessedTargets []string
 
-	// Scheduler route request to nodes (beansdb servers)
-	scheduler Scheduler
-
 	// Dynamo NWR model, please refer to Dynamo paper for details.
 	N, W, R int
 }
 
-func NewStorageClient(s Scheduler, n int, w int, r int) (c *StorageClient) {
+func NewStorageClient(n int, w int, r int) (c *StorageClient) {
 	c = new(StorageClient)
-	c.scheduler = s
 	c.N = n
 	c.W = w
 	c.R = r
@@ -61,7 +57,7 @@ func (c *StorageClient) Clean() {
 }
 
 func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
-	hosts := c.scheduler.GetHostsByKey(key)
+	hosts := globalScheduler.GetHostsByKey(key)
 	cnt := 0
 	for _, host := range hosts[:c.N] {
 		start := time.Now()
@@ -69,7 +65,7 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 		if err == nil {
 			cnt++
 			if item != nil {
-				c.scheduler.FeedbackTime(host, key, time.Now().Sub(start))
+				globalScheduler.FeedbackTime(host, key, time.Now().Sub(start))
 				c.SuccessedTargets = []string{host.Addr}
 				return
 			} else {
@@ -77,9 +73,9 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 			}
 		} else {
 			if isWaitForRetry(err) {
-				c.scheduler.Feedback(host, key, FeedbackConnectErrDefault)
+				globalScheduler.Feedback(host, key, FeedbackConnectErrDefault)
 			} else {
-				c.scheduler.Feedback(host, key, FeedbackNonConnectErrDefault)
+				globalScheduler.Feedback(host, key, FeedbackNonConnectErrDefault)
 			}
 		}
 	}
@@ -96,7 +92,7 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets []string, err error) {
 	numKeys := len(keys)
 	rs = make(map[string]*mc.Item, numKeys)
-	hosts := c.scheduler.GetHostsByKey(keys[0])
+	hosts := globalScheduler.GetHostsByKey(keys[0])
 	suc := 0
 	for _, host := range hosts[:c.N] {
 		start := time.Now()
@@ -105,7 +101,7 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 			suc += 1
 			if r != nil {
 				targets = append(targets, host.Addr)
-				c.scheduler.FeedbackTime(host, keys[0], time.Now().Sub(start))
+				globalScheduler.FeedbackTime(host, keys[0], time.Now().Sub(start))
 			}
 
 			for k, v := range r {
@@ -130,10 +126,10 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 				if err == nil {
 					err = er
 				}
-				c.scheduler.Feedback(host, keys[0], FeedbackConnectErrDefault)
+				globalScheduler.Feedback(host, keys[0], FeedbackConnectErrDefault)
 			} else {
 				err = er
-				c.scheduler.Feedback(host, keys[0], FeedbackNonConnectErrDefault)
+				globalScheduler.Feedback(host, keys[0], FeedbackNonConnectErrDefault)
 			}
 		}
 	}
@@ -147,7 +143,7 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 	var lock sync.Mutex
 	rs = make(map[string]*mc.Item, len(keys))
 
-	gs := c.scheduler.DivideKeysByBucket(keys)
+	gs := globalScheduler.DivideKeysByBucket(keys)
 	reply := make(chan bool, len(gs))
 	for _, ks := range gs {
 		if len(ks) > 0 {
@@ -178,7 +174,7 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 }
 
 func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {
-	hosts := c.scheduler.GetHostsByKey(key)
+	hosts := globalScheduler.GetHostsByKey(key)
 	ok = false
 	err = ErrWriteFailed
 	if len(hosts) >= c.N {
@@ -231,7 +227,7 @@ func (c *StorageClient) setConcurrently(
 			suc++
 			targets = append(targets, res.host.Addr)
 		} else if !isWaitForRetry(res.err) {
-			c.scheduler.Feedback(res.host, key, FeedbackNonConnectErrSet)
+			globalScheduler.Feedback(res.host, key, FeedbackNonConnectErrSet)
 		}
 	}
 	return
@@ -240,12 +236,12 @@ func (c *StorageClient) setConcurrently(
 func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 	// NOTE: gobeansdb now do not support `append`, this is not tested.
 	suc := 0
-	for i, host := range c.scheduler.GetHostsByKey(key) {
+	for i, host := range globalScheduler.GetHostsByKey(key) {
 		if ok, err = host.Append(key, value); err == nil && ok {
 			suc++
 			c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
 		} else if !isWaitForRetry(err) {
-			c.scheduler.Feedback(host, key, FeedbackNonConnectErrDefault)
+			globalScheduler.Feedback(host, key, FeedbackNonConnectErrDefault)
 		}
 
 		if suc >= c.W && (i+1) >= c.N {
@@ -267,7 +263,7 @@ func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 // link: http://github.intra.douban.com/coresys/gobeansproxy/issues/7
 func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 	suc := 0
-	for i, host := range c.scheduler.GetHostsByKey(key) {
+	for i, host := range globalScheduler.GetHostsByKey(key) {
 		r, e := host.Incr(key, value)
 		if e != nil {
 			err = e
@@ -302,7 +298,7 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 	suc := 0
 	errCnt := 0
 	failedHosts := make([]string, 0, 2)
-	for i, host := range c.scheduler.GetHostsByKey(key) {
+	for i, host := range globalScheduler.GetHostsByKey(key) {
 		ok, err := host.Delete(key)
 		if ok {
 			suc++
@@ -314,7 +310,7 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 				continue
 			}
 			if !isWaitForRetry(err) {
-				c.scheduler.Feedback(host, key, FeedbackNonConnectErrDelete)
+				globalScheduler.Feedback(host, key, FeedbackNonConnectErrDelete)
 			}
 		}
 
