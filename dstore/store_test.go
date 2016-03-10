@@ -130,8 +130,8 @@ func TestStore(t *testing.T) {
 	proxyConf := &config.Proxy
 	proxyConf.Load(confdir)
 
-	sch := NewManualScheduler(config.Route, proxyConf.N)
-	c := NewStorageClient(sch, proxyConf.N, proxyConf.W, proxyConf.R)
+	InitGlobalManualScheduler(config.Route, proxyConf.N)
+	c := NewStorageClient(proxyConf.N, proxyConf.W, proxyConf.R)
 
 	testStoreClient(t, c)
 }
