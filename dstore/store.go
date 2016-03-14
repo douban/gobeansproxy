@@ -297,6 +297,7 @@ func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 func (c *StorageClient) Delete(key string) (flag bool, err error) {
 	suc := 0
 	errCnt := 0
+	lastErrStr := ""
 	failedHosts := make([]string, 0, 2)
 	for i, host := range globalScheduler.GetHostsByKey(key) {
 		ok, err := host.Delete(key)
@@ -305,6 +306,7 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 			c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
 		} else if err != nil {
 			errCnt++
+			lastErrStr = err.Error()
 			failedHosts = append(failedHosts, host.Addr)
 			if i >= c.N {
 				continue
@@ -321,7 +323,7 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 	}
 	if errCnt > 0 {
 		logger.Warnf("key: %s was delete failed in %v, and the last error is %s",
-			key, failedHosts, err.Error())
+			key, failedHosts, lastErrStr)
 	}
 	if errCnt < 2 {
 		err = nil
