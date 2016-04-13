@@ -7,19 +7,19 @@ import (
 	_ "net/http/pprof"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"text/template"
 	"time"
-
-	"gopkg.in/yaml.v2"
 
 	"github.intra.douban.com/coresys/gobeansdb/cmem"
 	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
 	mc "github.intra.douban.com/coresys/gobeansdb/memcache"
 	"github.intra.douban.com/coresys/gobeansdb/utils"
-
 	"github.intra.douban.com/coresys/gobeansproxy/config"
 	"github.intra.douban.com/coresys/gobeansproxy/dstore"
+
+	yaml "gopkg.in/yaml.v2"
 )
 
 func handleWebPanic(w http.ResponseWriter) {
@@ -77,19 +77,19 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func startWeb() {
 	http.Handle("/templates/", http.FileServer(http.Dir(proxyConf.StaticDir)))
 
-	http.Handle("/", &templateHandler{filename: "templates/score.html"})
+	http.Handle("/", &templateHandler{filename: "templates/stats.html"})
 	http.Handle("/score/", &templateHandler{filename: "templates/score.html"})
-	http.Handle("/stats/", &templateHandler{filename: "templates/stats.html"})
+	http.HandleFunc("/score/json", handleScore)
 
-	http.HandleFunc("/stats/config/", handleConfig)
-	http.HandleFunc("/stats/request/", handleRequest)
-	http.HandleFunc("/stats/buffer/", handleBuffer)
-	http.HandleFunc("/stats/memstat/", handleMemStat)
-	http.HandleFunc("/stats/rusage/", handleRusage)
-	http.HandleFunc("/stats/score/", handleScore)
-
-	http.HandleFunc("/stats/route/", handleRoute)
-	http.HandleFunc("/stats/route/reload", handleRouteReload)
+	// same as gobeansdb
+	http.HandleFunc("/config/", handleConfig)
+	http.HandleFunc("/request/", handleRequest)
+	http.HandleFunc("/buffer/", handleBuffer)
+	http.HandleFunc("/memstat/", handleMemStat)
+	http.HandleFunc("/rusage/", handleRusage)
+	http.HandleFunc("/route/", handleRoute)
+	http.HandleFunc("/route/version", handleRouteVersion)
+	http.HandleFunc("/route/reload", handleRouteReload)
 
 	webaddr := fmt.Sprintf("%s:%d", proxyConf.Listen, proxyConf.WebPort)
 	go func() {
@@ -139,10 +139,29 @@ func handleRoute(w http.ResponseWriter, r *http.Request) {
 	handleYaml(w, config.Route)
 }
 
+func handleRouteVersion(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
+	if len(proxyConf.ZKServers) == 0 {
+		w.Write([]byte("-1"))
+		return
+	} else {
+		w.Write([]byte(strconv.Itoa(dbcfg.ZKClient.Version)))
+	}
+}
+
+func getFormValueInt(r *http.Request, name string, ndefault int) (n int, err error) {
+	n = ndefault
+	s := r.FormValue(name)
+	if s != "" {
+		n, err = strconv.Atoi(s)
+	}
+	return
+}
+
 func handleRouteReload(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if !dbcfg.AllowReload {
-		w.Write([]byte("reloading"))
+		w.Write([]byte("err: reloading"))
 		return
 	}
 
@@ -157,20 +176,24 @@ func handleRouteReload(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	if len(proxyConf.ZKServers) == 0 {
-		w.Write([]byte("not using zookeeper"))
+		w.Write([]byte("err: not using zookeeper"))
 		return
 	}
 
 	defer handleWebPanic(w)
-	newRouteContent, stat, err := dbcfg.ZKClient.GetRouteRaw()
+
+	r.ParseForm()
+	ver, err := getFormValueInt(r, "ver", -1)
 	if err != nil {
 		return
 	}
-	if dbcfg.ZKClient.Stat != nil && stat.Version == dbcfg.ZKClient.Stat.Version {
-		w.Write([]byte(fmt.Sprintf("same version %d", stat.Version)))
+
+	newRouteContent, ver, err := dbcfg.ZKClient.GetRouteRaw(ver)
+	if ver == dbcfg.ZKClient.Version {
+		w.Write([]byte(fmt.Sprintf("warn: same version %d", ver)))
 		return
 	}
-	info := fmt.Sprintf("update with route version %d\n", stat.Version)
+	info := fmt.Sprintf("update with route version %d\n", ver)
 	logger.Infof(info)
 	newRoute := new(dbcfg.RouteTable)
 	err = newRoute.LoadFromYaml(newRouteContent)
@@ -181,8 +204,8 @@ func handleRouteReload(w http.ResponseWriter, r *http.Request) {
 	oldScheduler := dstore.GetScheduler()
 	dstore.InitGlobalManualScheduler(newRoute, proxyConf.N)
 	config.Route = newRoute
-	dbcfg.ZKClient.Stat = stat
-	w.Write([]byte("success"))
+	dbcfg.ZKClient.Version = ver
+	w.Write([]byte("ok"))
 
 	go func() {
 		// sleep for request to be completed.
