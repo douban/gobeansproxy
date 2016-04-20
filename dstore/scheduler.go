@@ -1,6 +1,7 @@
 package dstore
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"strconv"
@@ -284,9 +285,15 @@ func (sch *ManualScheduler) Stats() map[string]map[string]float64 {
 	for i, hosts := range sch.buckets {
 		// 由于 r 在 web 接口端需要转换为 JSON，而 JSON 的 key 只支持 string，
 		// 所以在这里把 key 转为 string
-		r[strconv.Itoa(i)] = make(map[string]float64, len(hosts))
+		var bkt string
+		if sch.bucketWidth > 4 {
+			bkt = fmt.Sprintf("%02x", i)
+		} else {
+			bkt = fmt.Sprintf("%x", i)
+		}
+		r[bkt] = make(map[string]float64, len(hosts))
 		for _, hostIdx := range hosts {
-			r[strconv.Itoa(i)][sch.hosts[hostIdx].Addr] = sch.stats[i][hostIdx]
+			r[bkt][sch.hosts[hostIdx].Addr] = sch.stats[i][hostIdx]
 		}
 	}
 	return r

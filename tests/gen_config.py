@@ -27,7 +27,7 @@ gobeansdb_conf_tmpl = {
             'tree_height': 3,
         },
         'local': {
-            'homes': ['/var/lib/beansdb']
+            'home': '/var/lib/beansdb'
         }
     },
     'mc': {
@@ -180,7 +180,7 @@ def yaml_dump(conf, filename):
 
 def gen_server_conf(homedir, logdir, port, webport):
     tmpl = copy.deepcopy(gobeansdb_conf_tmpl)
-    tmpl['hstore']['local']['homes'] = [homedir]
+    tmpl['hstore']['local']['home'] = homedir
     tmpl['server']['errorlog'] = os.path.join(logdir, 'error.log')
     tmpl['server']['accesslog'] = os.path.join(logdir, 'access.log')
     tmpl['server']['port'] = port
