@@ -101,9 +101,8 @@ class GobeansdbInstance(BaseServerInstance):
         super(GobeansdbInstance, self).__init__(
             conf_dir, GOBEANSDB_CMD, 'gobeansdb')
         conf = load_yaml(os.path.join(conf_dir, 'global.yaml'))
-        self.db_homes = conf['hstore']['local']['homes']
+        self.db_home = conf['hstore']['local']['home']
 
     def clean_data(self):
-        for db_home in self.db_homes:
-            if os.path.exists(db_home):
-                shutil.rmtree(db_home)
+        if os.path.exists(self.db_home):
+            shutil.rmtree(self.db_home)
