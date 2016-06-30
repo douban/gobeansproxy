@@ -46,10 +46,12 @@ type ManualScheduler struct {
 	hosts []*Host
 
 	// buckets[bucket] is a list of host index.
-	buckets [][]int
+	buckets    [][]int
+	bucketsCon []Bucket
 
 	// backups[bucket] is a list of host index.
-	backups [][]int
+	backups    [][]int
+	backupsCon []Bucket
 
 	// stats[bucket][host_index] is the score.
 	stats [][]float64
@@ -78,6 +80,8 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 	sch.N = n
 	sch.hosts = make([]*Host, len(route.Servers))
 	sch.buckets = make([][]int, route.NumBucket)
+	sch.bucketsCon = make([]Bucket, route.NumBucket)
+	sch.backupsCon = make([]Bucket, route.NumBucket)
 	sch.backups = make([][]int, route.NumBucket)
 	sch.stats = make([][]float64, route.NumBucket)
 
@@ -86,11 +90,15 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 		host := NewHost(addr)
 		host.Index = idx
 		sch.hosts[idx] = host
-		for bucket, mainFlag := range bucketsFlag {
+		for bucketNum, mainFlag := range bucketsFlag {
 			if mainFlag {
-				sch.buckets[bucket] = append(sch.buckets[bucket], idx)
+				bucket := sch.bucketsCon[bucketNum]
+				bucket.AddHost(idx)
+				sch.buckets[bucketNum] = append(sch.buckets[bucketNum], idx)
 			} else {
-				sch.backups[bucket] = append(sch.backups[bucket], idx)
+				bucket := sch.backupsCon[bucketNum]
+				bucket.AddHost(idx)
+				sch.backups[bucketNum] = append(sch.backups[bucketNum], idx)
 			}
 		}
 		idx++
@@ -146,8 +154,20 @@ func getBucketByKey(hashFunc dbutil.HashMethod, bucketWidth int, key string) int
 	return (int)(h >> (uint)(32-bucketWidth))
 }
 
+func (sch *ManualScheduler) GetConsistentHosts(key string) (hosts []*Host) {
+	bucketNum := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
+	bucket := sch.bucketsCon[bucketNum]
+	hostsIdx := bucket.GetHosts(key)
+	hosts = make([]*Host, sch.N+len(bucket.Hosts))
+	for i, hostIdx := range hostsIdx {
+		hosts[i] = sch.hosts[hostIdx]
+	}
+	return
+}
+
 func (sch *ManualScheduler) GetHostsByKey(key string) (hosts []*Host) {
 	bucket := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
+	// Get Host By key
 	hosts = make([]*Host, sch.N+len(sch.backups[bucket]))
 
 	// set the main nodes
@@ -194,10 +214,17 @@ func (sch *ManualScheduler) procFeedback() {
 	}
 }
 
-func (sch *ManualScheduler) feedback(hostIndex, bucket int, adjust float64) {
-	stats := sch.stats[bucket]
+func (sch *ManualScheduler) feedback(hostIndex, bucketNum int, adjust float64) {
+	stats := sch.stats[bucketNum]
 	old := stats[hostIndex]
 	stats[hostIndex] += adjust
+	bucket := sch.bucketsCon[bucketNum]
+	for _, hostInbucket := range bucket.Hosts {
+		if hostInbucket.Idx == hostIndex {
+			hostInbucket.resTimes.Push(adjust)
+		}
+
+	}
 
 	// try to reduce the bucket's stats
 	if stats[hostIndex] > 100 {
@@ -207,7 +234,7 @@ func (sch *ManualScheduler) feedback(hostIndex, bucket int, adjust float64) {
 	}
 
 	bucketHosts := make([]int, sch.N)
-	copy(bucketHosts, sch.buckets[bucket])
+	copy(bucketHosts, sch.buckets[bucketNum])
 
 	k := 0
 	// find the position
@@ -231,7 +258,7 @@ func (sch *ManualScheduler) feedback(hostIndex, bucket int, adjust float64) {
 	}
 
 	// set it to origin
-	sch.buckets[bucket] = bucketHosts
+	sch.buckets[bucketNum] = bucketHosts
 }
 
 func (sch *ManualScheduler) tryReward() {
