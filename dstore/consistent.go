@@ -13,7 +13,6 @@ type Consistent struct {
 
 	replicas   int
 	keys       []int          // 所有虚拟节点有序列表。
-	maps       map[int]string // 节点映射表 {虚拟:物理}。
 	nodes      []string       // 物理节点列表 (按虚拟节点顺序)。
 	percentage map[string]int // nodeIdx: 33 %
 }
@@ -23,7 +22,6 @@ type Consistent struct {
 func NewConsistent(replicas int) *Consistent {
 	return &Consistent{
 		replicas:   replicas,
-		maps:       make(map[int]string),
 		percentage: make(map[string]int),
 	}
 }
@@ -39,9 +37,9 @@ func (this *Consistent) hash(key string) int {
 func (this *Consistent) update() {
 	sort.Ints(this.keys)
 
-	lenNodes := 100 / len(this.nodes)
-	for _, k := range this.nodes {
-		this.percentage[k] = lenNodes
+	lenNodes := len(this.keys) / len(this.nodes)
+	for i, k := range this.nodes {
+		this.percentage[k] = lenNodes*(i+1) - 1
 	}
 }
 
@@ -72,7 +70,10 @@ func (this *Consistent) Add(keys ...string) {
 func (this *Consistent) rePercent(hostPer map[int]int) {
 	this.Lock()
 	defer this.Unlock()
-	this.update()
+}
+
+func (this *Consistent) reBalance(fromHost, toHost Host, percent int) {
+
 }
 
 // 获取匹配主键。
@@ -85,38 +86,15 @@ func (this *Consistent) Get(key string) string {
 	if index == len(this.keys) {
 		index = 0
 	}
-	percentage := 0
 
 	for _, node := range this.nodes {
-		percentage += this.percentage[node]
+		percentage := this.percentage[node]
 		//		fmt.Println(percentage, "1000000000000000000")
-		if index < (percentage * 3) {
+		if index < percentage {
 			this.RUnlock()
 			return node
 		}
 	}
-
-	// current := this.maps[this.keys[index]]
-
-	// // next
-	// m := len(this.nodes)
-	// if m > 1 {
-	// 	for i, node := range this.nodes {
-	// 		if node == current {
-	// 			if i == m-1 {
-	// 				index = 0
-	// 			} else {
-	// 				index = i + 1
-	// 			}
-
-	// 			next := this.nodes[index]
-	// 			this.RUnlock()
-	// 			return current, next
-	// 		}
-	// 	}
-	// }
-
 	this.RUnlock()
 	return this.nodes[0]
-	//return current, ""
 }

@@ -1,46 +1,50 @@
 package dstore
 
+import ()
+
 const RINGLEN = 10
 
 type HostInBucket struct {
-	Idx      int //host index of Schduler.hosts
 	status   bool
+	host     *Host
 	resTimes RingQueue
 }
 
 type Bucket struct {
 	Id         int
-	Hosts      []HostInBucket
-	consistent Consistent
+	Hosts      map[string]HostInBucket
+	consistent *Consistent
 }
 
 func newBucket(id int) Bucket {
 	var bucket Bucket
-	var consistent Consistent
 	bucket.Id = id
-	bucket.consistent = consistent
+	bucket.consistent = NewConsistent(100)
+	bucket.Hosts = make(map[string]HostInBucket)
 	return bucket
 }
 
 // add host in bucket
-func (bucket *Bucket) AddHost(hostIdx int) {
+func (bucket *Bucket) AddHost(host *Host) {
 	hostInBucket := HostInBucket{
-		hostIdx,
 		true,
+		host,
 		*NewRingQueue(RINGLEN),
 	}
 
-	bucket.Hosts = append(bucket.Hosts, hostInBucket)
+	bucket.Hosts[host.Addr] = hostInBucket
+	bucket.consistent.Add([]string{host.Addr}...)
 }
 
 // get host by key
-func (bucket *Bucket) GetHosts(key string) (hosts []int) {
+func (bucket *Bucket) GetHosts(key string) (hosts []*Host) {
 	// TODO  通过 consistent 拿到一个物理节点
-	_ = bucket.consistent.Get(key)
-	hosts[0] = 0
+	hostName := bucket.consistent.Get(key)
 	for _, host := range bucket.Hosts {
-		if host.Idx != 0 {
-			hosts = append(hosts, host.Idx)
+		if host.host.Addr != hostName {
+			hosts = append(hosts, host.host)
+		} else {
+			hosts = append([]*Host{host.host}, hosts...)
 		}
 	}
 	return
@@ -49,4 +53,9 @@ func (bucket *Bucket) GetHosts(key string) (hosts []int) {
 // intput map of hostIndex -- percentage
 func (bucket *Bucket) Rescore(map[int]int) {
 
+}
+
+func (bucket *Bucket) addResTime(host string, record float64) {
+	hostBucket := bucket.Hosts[host]
+	hostBucket.resTimes.Push(record)
 }

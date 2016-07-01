@@ -61,7 +61,8 @@ func (c *StorageClient) Clean() {
 
 func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 	c.sched = GetScheduler()
-	hosts := c.sched.GetHostsByKey(key)
+
+	hosts := c.sched.GetConsistentHosts(key)
 	cnt := 0
 	for _, host := range hosts[:c.N] {
 		start := time.Now()
@@ -96,7 +97,7 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets []string, err error) {
 	numKeys := len(keys)
 	rs = make(map[string]*mc.Item, numKeys)
-	hosts := c.sched.GetHostsByKey(keys[0])
+	hosts := c.sched.GetConsistentHosts(keys[0])
 	suc := 0
 	for _, host := range hosts[:c.N] {
 		start := time.Now()
@@ -180,7 +181,7 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 
 func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {
 	c.sched = GetScheduler()
-	hosts := c.sched.GetHostsByKey(key)
+	hosts := c.sched.GetConsistentHosts(key)
 	ok = false
 	err = ErrWriteFailed
 	if len(hosts) >= c.N {
@@ -243,7 +244,7 @@ func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 	// NOTE: gobeansdb now do not support `append`, this is not tested.
 	c.sched = GetScheduler()
 	suc := 0
-	for i, host := range c.sched.GetHostsByKey(key) {
+	for i, host := range c.sched.GetConsistentHosts(key) {
 		if ok, err = host.Append(key, value); err == nil && ok {
 			suc++
 			c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
@@ -271,7 +272,7 @@ func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 	c.sched = GetScheduler()
 	suc := 0
-	for i, host := range c.sched.GetHostsByKey(key) {
+	for i, host := range c.sched.GetConsistentHosts(key) {
 		r, e := host.Incr(key, value)
 		if e != nil {
 			err = e
@@ -308,7 +309,7 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 	errCnt := 0
 	lastErrStr := ""
 	failedHosts := make([]string, 0, 2)
-	for i, host := range c.sched.GetHostsByKey(key) {
+	for i, host := range c.sched.GetConsistentHosts(key) {
 		ok, err := host.Delete(key)
 		if ok {
 			suc++

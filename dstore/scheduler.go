@@ -31,6 +31,9 @@ type Scheduler interface {
 	// route a key to hosts
 	GetHostsByKey(key string) []*Host
 
+	// route a key to hosts
+	GetConsistentHosts(key string) (hosts []*Host)
+
 	// route some keys to group of hosts
 	DivideKeysByBucket(keys []string) [][]string
 
@@ -93,11 +96,19 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 		for bucketNum, mainFlag := range bucketsFlag {
 			if mainFlag {
 				bucket := sch.bucketsCon[bucketNum]
-				bucket.AddHost(idx)
+				if bucket.Id == 0 {
+					sch.bucketsCon[bucketNum] = newBucket(bucketNum)
+				}
+				bucket = sch.bucketsCon[bucketNum]
+				bucket.AddHost(host)
 				sch.buckets[bucketNum] = append(sch.buckets[bucketNum], idx)
 			} else {
 				bucket := sch.backupsCon[bucketNum]
-				bucket.AddHost(idx)
+				if bucket.Id == 0 {
+					sch.backupsCon[bucketNum] = newBucket(bucketNum)
+				}
+				bucket = sch.backupsCon[bucketNum]
+				bucket.AddHost(host)
 				sch.backups[bucketNum] = append(sch.backups[bucketNum], idx)
 			}
 		}
@@ -120,7 +131,7 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 				close(sch.feedChan)
 				break
 			}
-			sch.tryReward()
+			// sch.tryReward()
 			time.Sleep(5 * time.Second)
 		}
 	}()
@@ -155,13 +166,10 @@ func getBucketByKey(hashFunc dbutil.HashMethod, bucketWidth int, key string) int
 }
 
 func (sch *ManualScheduler) GetConsistentHosts(key string) (hosts []*Host) {
+	fmt.Println("kkkkk", key)
 	bucketNum := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
 	bucket := sch.bucketsCon[bucketNum]
-	hostsIdx := bucket.GetHosts(key)
-	hosts = make([]*Host, sch.N+len(bucket.Hosts))
-	for i, hostIdx := range hostsIdx {
-		hosts[i] = sch.hosts[hostIdx]
-	}
+	hosts = bucket.GetHosts(key)
 	return
 }
 
@@ -186,14 +194,15 @@ func (sch *ManualScheduler) GetHostsByKey(key string) (hosts []*Host) {
 // feed back
 
 type Feedback struct {
-	hostIndex int
-	bucket    int
-	adjust    float64
+	host   *Host
+	bucket int
+	adjust float64
 }
 
 func (sch *ManualScheduler) Feedback(host *Host, key string, adjust float64) {
 	bucket := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
-	sch.feedChan <- &Feedback{hostIndex: host.Index, bucket: bucket, adjust: adjust}
+	//TODO 使用指针代替 index
+	sch.feedChan <- &Feedback{host: host, bucket: bucket, adjust: adjust}
 }
 
 func (sch *ManualScheduler) FeedbackTime(host *Host, key string, timeUsed time.Duration) {
@@ -210,55 +219,16 @@ func (sch *ManualScheduler) procFeedback() {
 			logger.Infof("close procFeedback goroutine")
 			break
 		}
-		sch.feedback(fb.hostIndex, fb.bucket, fb.adjust)
+		sch.feedback(fb.host, fb.bucket, fb.adjust)
 	}
 }
 
-func (sch *ManualScheduler) feedback(hostIndex, bucketNum int, adjust float64) {
-	stats := sch.stats[bucketNum]
-	old := stats[hostIndex]
-	stats[hostIndex] += adjust
+func (sch *ManualScheduler) feedback(host *Host, bucketNum int, adjust float64) {
 	bucket := sch.bucketsCon[bucketNum]
-	for _, hostInbucket := range bucket.Hosts {
-		if hostInbucket.Idx == hostIndex {
-			hostInbucket.resTimes.Push(adjust)
-		}
-
-	}
-
-	// try to reduce the bucket's stats
-	if stats[hostIndex] > 100 {
-		for i := 0; i < len(stats); i++ {
-			stats[i] /= 2
-		}
-	}
-
-	bucketHosts := make([]int, sch.N)
-	copy(bucketHosts, sch.buckets[bucketNum])
-
-	k := 0
-	// find the position
-	for k = 0; k < sch.N; k++ {
-		if bucketHosts[k] == hostIndex {
-			break
-		}
-	}
-
-	// move the position
-	if stats[hostIndex]-old > 0 {
-		for k > 0 && stats[bucketHosts[k]] > stats[bucketHosts[k-1]] {
-			swap(bucketHosts, k, k-1)
-		}
-		k--
+	if adjust > 0 {
+		bucket.addResTime("test", adjust)
 	} else {
-		for k < sch.N-1 && stats[bucketHosts[k]] < stats[bucketHosts[k+1]] {
-			swap(bucketHosts, k, k+1)
-		}
-		k++
 	}
-
-	// set it to origin
-	sch.buckets[bucketNum] = bucketHosts
 }
 
 func (sch *ManualScheduler) tryReward() {
@@ -288,7 +258,7 @@ func (sch *ManualScheduler) rewardNode(bucket int, node int, maxReward int) {
 		} else {
 			reward = float64(rand.Intn(maxReward))
 		}
-		sch.feedChan <- &Feedback{hostIndex: hostIdx, bucket: bucket, adjust: reward}
+		sch.feedChan <- &Feedback{host: sch.hosts[hostIdx], bucket: bucket, adjust: reward}
 	} else {
 		logger.Infof(
 			"beansdb server %s in Bucket %X's second node Down while try_reward, err is %s",
