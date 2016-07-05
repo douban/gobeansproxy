@@ -25,8 +25,8 @@ var (
 // Scheduler: route request to nodes
 type Scheduler interface {
 	// feedback for auto routing
-	Feedback(host *Host, key string, adjust float64)
-	FeedbackTime(host *Host, key string, timeUsed time.Duration)
+	Feedback(host *Host, key string, startTime time.Time, adjust float64)
+	FeedbackTime(host *Host, key string, startTime time.Time, timeUsed time.Duration)
 
 	// route a key to hosts
 	GetHostsByKey(key string) []*Host
@@ -82,10 +82,10 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 	sch := new(ManualScheduler)
 	sch.N = n
 	sch.hosts = make([]*Host, len(route.Servers))
-	sch.buckets = make([][]int, route.NumBucket)
+	//	sch.buckets = make([][]int, route.NumBucket)
 	sch.bucketsCon = make([]Bucket, route.NumBucket)
 	sch.backupsCon = make([]Bucket, route.NumBucket)
-	sch.backups = make([][]int, route.NumBucket)
+	//sch.backups = make([][]int, route.NumBucket)
 	sch.stats = make([][]float64, route.NumBucket)
 
 	idx := 0
@@ -95,13 +95,12 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 		sch.hosts[idx] = host
 		for bucketNum, mainFlag := range bucketsFlag {
 			if mainFlag {
-				bucket := sch.bucketsCon[bucketNum]
-				if bucket.Id == 0 {
+				if len(sch.bucketsCon[bucketNum].Hosts) == 0 {
 					sch.bucketsCon[bucketNum] = newBucket(bucketNum)
 				}
-				bucket = sch.bucketsCon[bucketNum]
+				bucket := sch.bucketsCon[bucketNum]
 				bucket.AddHost(host)
-				sch.buckets[bucketNum] = append(sch.buckets[bucketNum], idx)
+				//sch.buckets[bucketNum] = append(sch.buckets[bucketNum], idx)
 			} else {
 				bucket := sch.backupsCon[bucketNum]
 				if bucket.Id == 0 {
@@ -109,7 +108,7 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 				}
 				bucket = sch.backupsCon[bucketNum]
 				bucket.AddHost(host)
-				sch.backups[bucketNum] = append(sch.backups[bucketNum], idx)
+				//sch.backups[bucketNum] = append(sch.backups[bucketNum], idx)
 			}
 		}
 		idx++
@@ -124,6 +123,7 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 
 	// scheduler 对各个 host 的打分机制
 	go sch.procFeedback()
+
 	go func() {
 		for {
 			if sch.quit {
@@ -166,7 +166,6 @@ func getBucketByKey(hashFunc dbutil.HashMethod, bucketWidth int, key string) int
 }
 
 func (sch *ManualScheduler) GetConsistentHosts(key string) (hosts []*Host) {
-	fmt.Println("kkkkk", key)
 	bucketNum := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
 	bucket := sch.bucketsCon[bucketNum]
 	hosts = bucket.GetHosts(key)
@@ -194,20 +193,21 @@ func (sch *ManualScheduler) GetHostsByKey(key string) (hosts []*Host) {
 // feed back
 
 type Feedback struct {
-	host   *Host
-	bucket int
-	adjust float64
+	host      *Host
+	bucket    int
+	adjust    float64
+	startTime time.Time
 }
 
-func (sch *ManualScheduler) Feedback(host *Host, key string, adjust float64) {
+func (sch *ManualScheduler) Feedback(host *Host, key string, startTime time.Time, adjust float64) {
 	bucket := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
 	//TODO 使用指针代替 index
 	sch.feedChan <- &Feedback{host: host, bucket: bucket, adjust: adjust}
 }
 
-func (sch *ManualScheduler) FeedbackTime(host *Host, key string, timeUsed time.Duration) {
+func (sch *ManualScheduler) FeedbackTime(host *Host, key string, startTime time.Time, timeUsed time.Duration) {
 	n := timeUsed.Seconds()
-	sch.Feedback(host, key, 1-math.Sqrt(n)*n)
+	sch.Feedback(host, key, startTime, 1-math.Sqrt(n)*n)
 }
 
 func (sch *ManualScheduler) procFeedback() {
@@ -219,15 +219,20 @@ func (sch *ManualScheduler) procFeedback() {
 			logger.Infof("close procFeedback goroutine")
 			break
 		}
-		sch.feedback(fb.host, fb.bucket, fb.adjust)
+		sch.feedback(fb.host, fb.bucket, fb.startTime, fb.adjust)
 	}
 }
 
-func (sch *ManualScheduler) feedback(host *Host, bucketNum int, adjust float64) {
+func (sch *ManualScheduler) feedback(host *Host, bucketNum int, startTime time.Time, adjust float64) {
 	bucket := sch.bucketsCon[bucketNum]
 	if adjust > 0 {
-		bucket.addResTime("test", adjust)
+		bucket.addResTime(host.Addr, startTime, adjust)
 	} else {
+		bucket.addConErr(host.Addr, startTime, adjust)
+		hostIsAlive := bucket.hostIsAlive(host.Addr)
+		if !hostIsAlive {
+			bucket.Score()
+		}
 	}
 }
 
@@ -267,7 +272,7 @@ func (sch *ManualScheduler) rewardNode(bucket int, node int, maxReward int) {
 }
 
 func (sch *ManualScheduler) DivideKeysByBucket(keys []string) [][]string {
-	rs := make([][]string, len(sch.buckets))
+	rs := make([][]string, len(sch.bucketsCon))
 	for _, key := range keys {
 		b := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
 		rs[b] = append(rs[b], key)

@@ -2,12 +2,20 @@ package dstore
 
 import (
 	"errors"
+	"time"
 )
 
+const TIMEINTERVAL = 30 // proxy 链接 后端 超时时间 为 3 秒，TIMEI
+
+type Response struct {
+	ReqTime time.Time
+	count   int
+	Sum     float64
+}
+
 type RingQueue struct {
-	data []float64
-	head int
-	tail int
+	resData []Response
+	errData []Response
 }
 
 var (
@@ -17,30 +25,60 @@ var (
 
 func NewRingQueue(cap int) *RingQueue {
 	return &RingQueue{
-		data: make([]float64, cap),
+		resData: make([]Response, cap),
+		errData: make([]Response, cap),
 	}
 }
 
-func (q *RingQueue) Push(x float64) error {
-	if (cap(q.data) - (q.tail - q.head)) == 0 {
-		return ErrQueueFull
+func (q *RingQueue) Push(start time.Time, ResTime float64) error {
+	second := start.Second()
+	// TODO 这里需要反转一下
+	if q.resData[second].ReqTime.Sub(start) > TIMEINTERVAL {
+		q.resData[second].Sum = ResTime
+		q.resData[second].count = 1
+		q.resData[second].ReqTime = start
 	}
+	q.resData[second].Sum += ResTime
+	q.resData[second].ReqTime = start
+	q.resData[second].count += 1
 
-	n := q.tail % cap(q.data)
-	q.data[n] = x
-
-	q.tail++
 	return nil
 }
 
-func (q *RingQueue) Pop() (float64, error) {
-	if q.tail == q.head {
-		return 0, ErrQueueEmpty
+func (q *RingQueue) PushErr(start time.Time, ResTime float64) error {
+	second := start.Second()
+	if q.errData[second].count > 0 {
+		if start.Sub(q.errData[second].ReqTime) > TIMEINTERVAL {
+			q.errData[second].Sum = ResTime
+			q.errData[second].count = 1
+			q.errData[second].ReqTime = start
+		}
 	}
+	q.errData[second].Sum += ResTime
+	q.errData[second].ReqTime = start
+	q.errData[second].count += 1
 
-	n := q.head % cap(q.data)
-	x := q.data[n]
+	return nil
+}
 
-	q.head++
-	return x, nil
+func (q *RingQueue) GetResponses(num int) (responses []Response) {
+	now := time.Now()
+	second := now.Second()
+	offset := second - num
+	if offset > 0 {
+		return q.resData[offset:second]
+	} else {
+		return append(q.resData[len(q.resData)+offset:], q.resData[0:second]...)
+	}
+}
+
+func (q *RingQueue) GetErrors(num int) (responses []Response) {
+	now := time.Now()
+	second := now.Second()
+	offset := second - num
+	if offset < 0 {
+		return append(q.errData[len(q.errData)+offset:], q.errData[0:second]...)
+	} else {
+		return q.errData[offset:second]
+	}
 }
