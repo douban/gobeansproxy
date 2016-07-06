@@ -2,6 +2,7 @@ package dstore
 
 import (
 	"errors"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,7 @@ type Response struct {
 }
 
 type RingQueue struct {
+	sync.Mutex
 	resData []Response
 	errData []Response
 }
@@ -32,6 +34,8 @@ func NewRingQueue(cap int) *RingQueue {
 
 func (q *RingQueue) Push(start time.Time, ResTime float64) error {
 	second := start.Second()
+	q.Lock()
+	defer q.Unlock()
 	// TODO 这里需要反转一下
 	if q.resData[second].ReqTime.Sub(start) > TIMEINTERVAL {
 		q.resData[second].Sum = ResTime
@@ -47,6 +51,8 @@ func (q *RingQueue) Push(start time.Time, ResTime float64) error {
 
 func (q *RingQueue) PushErr(start time.Time, ResTime float64) error {
 	second := start.Second()
+	q.Lock()
+	defer q.Unlock()
 	if q.errData[second].count > 0 {
 		if start.Sub(q.errData[second].ReqTime) > TIMEINTERVAL {
 			q.errData[second].Sum = ResTime

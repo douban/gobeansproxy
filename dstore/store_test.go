@@ -133,7 +133,6 @@ func TestStore(t *testing.T) {
 
 	InitGlobalManualScheduler(config.Route, proxyConf.N)
 	c := NewStorageClient(proxyConf.N, proxyConf.W, proxyConf.R)
-	t.Log("clinet is ", c, proxyConf)
 
 	testStoreClient(t, c)
 }

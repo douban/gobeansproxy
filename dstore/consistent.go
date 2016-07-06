@@ -35,9 +35,11 @@ func (this *Consistent) hash(key string) int {
 
 // 更新主键列表。
 func (this *Consistent) update() {
+	this.Lock()
+	defer this.Unlock()
 	sort.Ints(this.keys)
-
 	lenNodes := len(this.keys) / len(this.nodes)
+
 	for i, k := range this.nodes {
 		this.percentage[k] = lenNodes*(i+1) - 1
 	}
@@ -45,8 +47,6 @@ func (this *Consistent) update() {
 
 // 添加主键。
 func (this *Consistent) Add(keys ...string) {
-	this.Lock()
-	defer this.Unlock()
 
 	var nodes []string
 	filter := map[string]byte{}
@@ -67,9 +67,12 @@ func (this *Consistent) Add(keys ...string) {
 }
 
 // 调整百分比。
-func (this *Consistent) rePercent(hostPer map[int]int) {
+func (this *Consistent) rePercent(hostPer map[string]int) {
 	this.Lock()
 	defer this.Unlock()
+	for node, percent := range hostPer {
+		this.percentage[node] = percent
+	}
 }
 
 func (this *Consistent) reBalance(fromHost, toHost Host, percent int) {
@@ -88,9 +91,8 @@ func (this *Consistent) Get(key string) string {
 	}
 
 	for _, node := range this.nodes {
-		percentage := this.percentage[node]
 		//		fmt.Println(percentage, "1000000000000000000")
-		if index < percentage {
+		if index < this.percentage[node] {
 			this.RUnlock()
 			return node
 		}

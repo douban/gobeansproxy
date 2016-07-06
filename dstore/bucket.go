@@ -8,13 +8,18 @@ import (
 const RINGLEN = 60
 
 type HostInBucket struct {
-	status   bool
-	score    float64
-	host     *Host
-	resTimes RingQueue
+	status     bool
+	score      float64
+	percent    int
+	oldPercent int
+	oldScore   float64
+	host       *Host
+	resTimes   RingQueue
 }
 
 type Bucket struct {
+	score      float64
+	oldScore   float64
 	Id         int
 	Hosts      map[string]HostInBucket
 	consistent *Consistent
@@ -30,14 +35,15 @@ func newBucket(id int) Bucket {
 
 // add host in bucket
 func (bucket *Bucket) AddHost(host *Host) {
-	logger.Infof("add host %v", host)
 	hostInBucket := HostInBucket{
 		true,
+		0,
+		0,
+		0,
 		0,
 		host,
 		*NewRingQueue(RINGLEN),
 	}
-	logger.Infof("host in bucket %v", hostInBucket.host)
 
 	bucket.Hosts[host.Addr] = hostInBucket
 	bucket.consistent.Add([]string{host.Addr}...)
@@ -57,25 +63,38 @@ func (bucket *Bucket) GetHosts(key string) (hosts []*Host) {
 	return
 }
 
-// intput map of hostIndex -- percentage
-func (bucket *Bucket) Rescore(map[int]int) {
-
+func (bucket *Bucket) reBalance() {
+	var hostPercentage map[string]int
+	for addr, host := range bucket.Hosts {
+		hostPercentage[addr] = host.percent
+	}
+	bucket.consistent.rePercent(hostPercentage)
 }
 
 func (bucket *Bucket) Score() {
+	bucket.oldScore = 0
+	bucket.score = 0
 	for addr, host := range bucket.Hosts {
 		var score float64
 		if host.status == false {
+			host.oldScore = host.score
 			host.score = 0
 			println(addr)
 		} else {
+			host.oldScore = host.score
 			res := host.resTimes.GetResponses(10)
+			// use responseTime and responseCount
 			for i, response := range res {
 				score += ((response.Sum / float64(response.count)) + float64(response.count)) * math.Pow(0.9, 10-float64(i))
 			}
 			host.score = score
 		}
-
+		bucket.oldScore += host.oldScore
+		bucket.score += host.score
+	}
+	for _, host := range bucket.Hosts {
+		host.oldPercent = host.percent
+		host.percent = int(host.score/bucket.score) * 100
 	}
 }
 

@@ -98,7 +98,6 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 	numKeys := len(keys)
 	rs = make(map[string]*mc.Item, numKeys)
 	hosts := c.sched.GetConsistentHosts(keys[0])
-	logger.Errorf("multi hosts is %v", hosts)
 	suc := 0
 	for _, host := range hosts[:c.N] {
 		start := time.Now()

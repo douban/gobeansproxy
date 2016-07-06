@@ -232,6 +232,7 @@ func (sch *ManualScheduler) feedback(host *Host, bucketNum int, startTime time.T
 		hostIsAlive := bucket.hostIsAlive(host.Addr)
 		if !hostIsAlive {
 			bucket.Score()
+			bucket.reBalance()
 		}
 	}
 }

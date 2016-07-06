@@ -15,12 +15,8 @@ func TestConsistent(t *testing.T) {
 
 		hashs := NewConsistent(100)
 		hashs.Add(keys...)
-		fmt.Println("keys", hashs.keys)
-		for i, key := range hashs.keys {
-			fmt.Println(i, "key", key)
-		}
-
 		// 计数器
+		t.Log(hashs.percentage)
 		counter := make(map[string]int)
 		loop := 1000000
 		threshold := loop / len(keys) / 10 * 8
@@ -38,40 +34,6 @@ func TestConsistent(t *testing.T) {
 
 		Println(counter)
 	})
-
-	// Convey("delete", t, func() {
-	// 	keys := []string{"a", "d", "z"}
-
-	// 	hashs := NewConsistent(100)
-	// 	hashs.Add(keys...)
-	// 	hashs.delete("d")
-
-	// 	// 统计顺序 key 分布。
-	// 	counter := make(map[string]int)
-	// 	for i := 0; i < 10000; i++ {
-	// 		s, _ := hashs.Get(fmt.Sprintf("key%d", i))
-	// 		counter[s] += 1
-	// 	}
-
-	// 	// 阈值检查
-	// 	So(counter["a"], ShouldBeGreaterThan, 0)
-	// 	So(counter["d"], ShouldBeZeroValue)
-	// 	So(counter["z"], ShouldBeGreaterThan, 0)
-	// 	keys = []string{"d"}
-	// 	hashs.Add(keys...)
-	// 	// 统计顺序 key 分布。
-	// 	counter = make(map[string]int)
-	// 	for i := 0; i < 10000; i++ {
-	// 		s, _ := hashs.Get(fmt.Sprintf("key%d", i))
-	// 		counter[s] += 1
-	// 	}
-
-	// 	// 阈值检查
-	// 	So(counter["a"], ShouldBeGreaterThan, 0)
-	// 	So(counter["d"], ShouldBeGreaterThan, 0)
-	// 	So(counter["z"], ShouldBeGreaterThan, 0)
-
-	// })
 
 	Convey("multi", t, func() {
 		keys := []string{"192.168.1.1", "192.168.1.2", "192.168.1.3"}
@@ -91,44 +53,6 @@ func TestConsistent(t *testing.T) {
 		s2 = hashs2.Get("abc")
 		So(s1, ShouldEqual, s2)
 	})
-
-	// Convey("next", t, func() {
-	// 	keys := []string{"192.168.1.1", "192.168.1.2", "192.168.1.3"}
-	// 	nodes := []string{"192.168.1.1", "192.168.1.3", "192.168.1.2"}
-
-	// 	hashs := NewConsistent(100)
-	// 	hashs.Add(keys...)
-
-	// 	Println(hashs.nodes)
-	// 	So(hashs.nodes, ShouldResemble, nodes)
-
-	// 	// .1 -> .3
-	// 	s, n := hashs.Get("akey")
-	// 	So(s, ShouldEqual, keys[0])
-	// 	So(n, ShouldEqual, nodes[1])
-
-	// 	// .3 -> .2
-	// 	s, n = hashs.Get("bkey")
-	// 	So(s, ShouldEqual, keys[2])
-	// 	So(n, ShouldEqual, nodes[2])
-
-	// 	// .2 -> .1
-	// 	s, n = hashs.Get("xkey")
-	// 	So(s, ShouldEqual, keys[1])
-	// 	So(n, ShouldEqual, nodes[0])
-
-	// 	hashs.delete(keys[1])
-
-	// 	// .1 -> .3
-	// 	s, n = hashs.Get("xkey")
-	// 	So(s, ShouldEqual, keys[0])
-	// 	So(n, ShouldEqual, nodes[1])
-
-	// 	// .3 -> .1
-	// 	s, n = hashs.Get("bkey")
-	// 	So(s, ShouldEqual, keys[2])
-	// 	So(n, ShouldEqual, nodes[0])
-	// })
 }
 
 // 哈希函数性能。
