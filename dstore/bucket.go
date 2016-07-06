@@ -6,6 +6,7 @@ import (
 )
 
 const RINGLEN = 60
+const CONSISTENTLEN = 100
 
 type HostInBucket struct {
 	status     bool
@@ -28,7 +29,7 @@ type Bucket struct {
 func newBucket(id int) Bucket {
 	var bucket Bucket
 	bucket.Id = id
-	bucket.consistent = NewConsistent(100)
+	bucket.consistent = NewConsistent(CONSISTENTLEN)
 	bucket.Hosts = make(map[string]HostInBucket)
 	return bucket
 }
