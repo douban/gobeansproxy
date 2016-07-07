@@ -9,17 +9,17 @@ import (
 type Consistent struct {
 	sync.RWMutex
 
-	replicas   int
-	nodes      []string       // 物理节点列表 (按虚拟节点顺序)。
-	percentage map[string]int // nodeIdx: 33 %
+	count   int
+	nodes   []string // 物理节点列表 (按虚拟节点顺序)。
+	perc    []int
+	offsets map[string]int // nodeIdx: 33 %
 }
 
 /* --- Consistent -------------------------------------------------------------- */
-
-func NewConsistent(replicas int) *Consistent {
+func NewConsistent(count int) *Consistent {
 	return &Consistent{
-		replicas:   replicas,
-		percentage: make(map[string]int),
+		count:   count,
+		offsets: make(map[string]int),
 	}
 }
 
@@ -35,10 +35,10 @@ func (this *Consistent) update() {
 	this.Lock()
 	defer this.Unlock()
 	//	sort.Ints(this.keys)
-	lenNodes := this.replicas / len(this.nodes)
+	lenNodes := this.count / len(this.nodes)
 
 	for i, k := range this.nodes {
-		this.percentage[k] = lenNodes*(i+1) - 1
+		this.offsets[k] = lenNodes*(i+1) - 1
 	}
 }
 
@@ -63,25 +63,45 @@ func (this *Consistent) rePercent(hostPer map[string]int) {
 	this.Lock()
 	defer this.Unlock()
 	for node, percent := range hostPer {
-		this.percentage[node] = percent
+		this.offsets[node] = percent
 	}
 }
 
-func (this *Consistent) reBalance(fromHost, toHost Host, percent int) {
-
+func (this *Consistent) reBalance(nodeFrom, nodeTo string, percentage int) {
+	indexFrom := this.getNode(nodeFrom)
+	indexTo := this.getNode(nodeTo)
+	x := indexFrom - indexTo
+	switch x {
+	case 1: // node2 -> node1 or node3 -> node2
+		this.perc[indexTo] += percentage
+	case -1: // node1 -> node2 or node2 -> node3
+		this.perc[indexFrom] -= percentage
+	case 2: // node3 -> node1
+		this.perc[indexFrom] -= percentage
+	case -2: // node1 -> node3
+		this.perc[indexFrom] += percentage
+	}
 }
 
 // 获取匹配主键。
 func (this *Consistent) Get(key string) string {
 	this.RLock()
+	defer this.RUnlock()
 
 	index := this.hash(key)
 	for _, node := range this.nodes {
-		if index < this.percentage[node] {
-			this.RUnlock()
+		if index < this.offsets[node] {
 			return node
 		}
 	}
-	this.RUnlock()
 	return this.nodes[0]
+}
+
+func (this *Consistent) getNode(node string) (index int) {
+	for i, n := range this.nodes {
+		if n == node {
+			return i
+		}
+	}
+	return
 }

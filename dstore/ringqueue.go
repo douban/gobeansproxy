@@ -8,6 +8,8 @@ import (
 
 const TIMEINTERVAL = 30 // proxy 链接 后端 超时时间 为 3 秒，TIMEI
 
+const QUEUECAP = 60
+
 type Response struct {
 	ReqTime time.Time
 	count   int
@@ -16,8 +18,8 @@ type Response struct {
 
 type RingQueue struct {
 	sync.Mutex
-	resData []Response
-	errData []Response
+	resData [QUEUECAP]Response
+	errData [QUEUECAP]Response
 }
 
 var (
@@ -25,11 +27,8 @@ var (
 	ErrQueueEmpty = errors.New("queue empty")
 )
 
-func NewRingQueue(cap int) *RingQueue {
-	return &RingQueue{
-		resData: make([]Response, cap),
-		errData: make([]Response, cap),
-	}
+func NewRingQueue() *RingQueue {
+	return &RingQueue{}
 }
 
 func (q *RingQueue) Push(start time.Time, ResTime float64) error {

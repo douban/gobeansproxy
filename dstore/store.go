@@ -191,6 +191,7 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 			err = nil
 			c.SuccessedTargets = mainTargets
 		} else {
+			logger.Infof("hello backups %v", hosts)
 			backupSuc, backupTargets := c.setConcurrently(hosts[c.N:], key, item, noreply)
 			if mainSuc+backupSuc >= c.W {
 				ok = true

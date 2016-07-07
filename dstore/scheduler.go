@@ -131,7 +131,7 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 				close(sch.feedChan)
 				break
 			}
-			// sch.tryReward()
+			sch.tryReward()
 			time.Sleep(5 * time.Second)
 		}
 	}()
@@ -168,7 +168,19 @@ func getBucketByKey(hashFunc dbutil.HashMethod, bucketWidth int, key string) int
 func (sch *ManualScheduler) GetConsistentHosts(key string) (hosts []*Host) {
 	bucketNum := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
 	bucket := sch.bucketsCon[bucketNum]
-	hosts = bucket.GetHosts(key)
+	hosts = make([]*Host, sch.N+len(sch.backupsCon[bucketNum].Hosts))
+	hostsCon := bucket.GetHosts(key)
+	for i, host := range hostsCon {
+		if i < sch.N {
+			hosts[i] = host
+		}
+	}
+	// set the backup nodes in pos after main nodes
+	index := 0
+	for _, host := range sch.backupsCon[bucketNum].Hosts {
+		hosts[sch.N+index] = host.host
+		index += 1
+	}
 	return
 }
 

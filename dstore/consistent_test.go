@@ -15,7 +15,6 @@ func TestConsistent(t *testing.T) {
 	hashs := NewConsistent(100)
 	hashs.Add(keys...)
 	// 计数器
-	t.Log(hashs.percentage)
 	counter := make(map[string]int)
 	loop := 1000000
 	threshold := loop / len(keys) / 10 * 8

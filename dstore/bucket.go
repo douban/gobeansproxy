@@ -43,7 +43,7 @@ func (bucket *Bucket) AddHost(host *Host) {
 		0,
 		0,
 		host,
-		*NewRingQueue(RINGLEN),
+		*NewRingQueue(),
 	}
 
 	bucket.Hosts[host.Addr] = hostInBucket
@@ -70,6 +70,12 @@ func (bucket *Bucket) reBalance() {
 		hostPercentage[addr] = host.percent
 	}
 	bucket.consistent.rePercent(hostPercentage)
+
+	var precipitates map[string]int
+	for addr, host := range bucket.Hosts {
+		precipitate := host.percent - host.oldPercent
+		precipitates[addr] = precipitate
+	}
 }
 
 func (bucket *Bucket) Score() {
