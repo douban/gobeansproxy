@@ -17,9 +17,9 @@ type Response struct {
 }
 
 type RingQueue struct {
-	sync.Mutex
 	resData [QUEUECAP]Response
 	errData [QUEUECAP]Response
+	sync.RWMutex
 }
 
 var (
@@ -28,7 +28,10 @@ var (
 )
 
 func NewRingQueue() *RingQueue {
-	return &RingQueue{}
+	return &RingQueue{
+		resData: [QUEUECAP]Response{},
+		errData: [QUEUECAP]Response{},
+	}
 }
 
 func (q *RingQueue) Push(start time.Time, ResTime float64) error {
@@ -36,7 +39,7 @@ func (q *RingQueue) Push(start time.Time, ResTime float64) error {
 	q.Lock()
 	defer q.Unlock()
 	// TODO 这里需要反转一下
-	if q.resData[second].ReqTime.Sub(start) > TIMEINTERVAL {
+	if start.Sub(q.resData[second].ReqTime) > TIMEINTERVAL {
 		q.resData[second].Sum = ResTime
 		q.resData[second].count = 1
 		q.resData[second].ReqTime = start
@@ -66,7 +69,10 @@ func (q *RingQueue) PushErr(start time.Time, ResTime float64) error {
 	return nil
 }
 
+// get responses in last num seconds
 func (q *RingQueue) GetResponses(num int) (responses []Response) {
+	q.RLock()
+	defer q.RUnlock()
 	now := time.Now()
 	second := now.Second()
 	offset := second - num
@@ -77,7 +83,10 @@ func (q *RingQueue) GetResponses(num int) (responses []Response) {
 	}
 }
 
+// get errors in last num seconds
 func (q *RingQueue) GetErrors(num int) (responses []Response) {
+	q.RLock()
+	defer q.RUnlock()
 	now := time.Now()
 	second := now.Second()
 	offset := second - num

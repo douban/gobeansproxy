@@ -10,17 +10,21 @@ type Consistent struct {
 	sync.RWMutex
 
 	count   int
-	nodes   []string // 物理节点列表 (按虚拟节点顺序)。
-	perc    []int
-	offsets map[string]int // nodeIdx: 33 %
+	offsets []int
 }
 
 /* --- Consistent -------------------------------------------------------------- */
-func NewConsistent(count int) *Consistent {
-	return &Consistent{
+func NewConsistent(count int, nodesNum int) *Consistent {
+	consistent := &Consistent{
 		count:   count,
-		offsets: make(map[string]int),
+		offsets: []int{},
 	}
+	lenNodes := consistent.count / nodesNum
+
+	for i := 0; i < nodesNum; i++ {
+		consistent.offsets = append(consistent.offsets, lenNodes*(i+1))
+	}
+	return consistent
 }
 
 // 哈希函数。
@@ -30,78 +34,65 @@ func (this *Consistent) hash(key string) int {
 	return int(hash.Sum32()) % 100
 }
 
-// 更新主键列表。
-func (this *Consistent) update() {
-	this.Lock()
-	defer this.Unlock()
-	//	sort.Ints(this.keys)
-	lenNodes := this.count / len(this.nodes)
-
-	for i, k := range this.nodes {
-		this.offsets[k] = lenNodes*(i+1) - 1
+func (this *Consistent) remove(host int) {
+	preIndex := (host - 1 + 3) % 3
+	offsetsPre := this.offsets[preIndex]
+	middle := 0
+	if offsetsPre > this.offsets[host] {
+		middle = (this.offsets[host] + this.count - offsetsPre)
+	} else {
+		middle = (this.offsets[host] - offsetsPre)
 	}
+	this.offsets[preIndex] += (middle / 2)
+	this.offsets[host] = this.offsets[preIndex]
 }
 
-// 添加主键。
-func (this *Consistent) Add(keys ...string) {
-
-	var nodes []string
-	filter := map[string]byte{}
-
-	for _, k := range keys {
-		if _, ok := filter[k]; !ok {
-			nodes = append(nodes, k)
-			filter[k] = 1
-		}
-	}
-	this.nodes = nodes
-	this.update()
-}
-
-// 调整百分比。
-func (this *Consistent) rePercent(hostPer map[string]int) {
-	this.Lock()
-	defer this.Unlock()
-	for node, percent := range hostPer {
-		this.offsets[node] = percent
-	}
-}
-
-func (this *Consistent) reBalance(nodeFrom, nodeTo string, percentage int) {
-	indexFrom := this.getNode(nodeFrom)
-	indexTo := this.getNode(nodeTo)
+func (this *Consistent) reBalance(indexFrom, indexTo int, offsetsentage int) {
 	x := indexFrom - indexTo
 	switch x {
 	case 1: // node2 -> node1 or node3 -> node2
-		this.perc[indexTo] += percentage
+		this.offsets[indexTo] += offsetsentage
 	case -1: // node1 -> node2 or node2 -> node3
-		this.perc[indexFrom] -= percentage
+		this.offsets[indexFrom] -= offsetsentage
 	case 2: // node3 -> node1
-		this.perc[indexFrom] -= percentage
+		this.offsets[indexFrom] -= offsetsentage
 	case -2: // node1 -> node3
-		this.perc[indexFrom] += percentage
+		this.offsets[indexFrom] += offsetsentage
 	}
 }
 
 // 获取匹配主键。
-func (this *Consistent) Get(key string) string {
-	this.RLock()
-	defer this.RUnlock()
+func (this *Consistent) offsetGet(key string) int {
 
 	index := this.hash(key)
-	for _, node := range this.nodes {
-		if index < this.offsets[node] {
-			return node
+	if this.offsets[0] > this.offsets[1] {
+		if index < this.offsets[1] {
+			return 1
+		} else if index < this.offsets[2] {
+			return 2
+		} else if index < this.offsets[0] {
+			return 0
+		} else {
+			return 1
 		}
-	}
-	return this.nodes[0]
-}
 
-func (this *Consistent) getNode(node string) (index int) {
-	for i, n := range this.nodes {
-		if n == node {
-			return i
+	} else if this.offsets[2] < this.offsets[1] {
+		if index < this.offsets[2] {
+			return 2
+		} else if index < this.offsets[0] {
+			return 0
+		} else if index < this.offsets[1] {
+			return 1
+		} else {
+			return 2
 		}
+
+	} else {
+		for i, value := range this.offsets {
+			if index < value {
+				return i
+			}
+		}
+		return 0
 	}
-	return
 }

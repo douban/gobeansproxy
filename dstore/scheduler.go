@@ -82,36 +82,41 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 	sch := new(ManualScheduler)
 	sch.N = n
 	sch.hosts = make([]*Host, len(route.Servers))
-	//	sch.buckets = make([][]int, route.NumBucket)
 	sch.bucketsCon = make([]Bucket, route.NumBucket)
 	sch.backupsCon = make([]Bucket, route.NumBucket)
-	//sch.backups = make([][]int, route.NumBucket)
 	sch.stats = make([][]float64, route.NumBucket)
 
 	idx := 0
+
+	bucketHosts := make(map[int][]*Host)
+	backupHosts := make(map[int][]*Host)
 	for addr, bucketsFlag := range route.Servers {
 		host := NewHost(addr)
 		host.Index = idx
 		sch.hosts[idx] = host
 		for bucketNum, mainFlag := range bucketsFlag {
 			if mainFlag {
-				if len(sch.bucketsCon[bucketNum].Hosts) == 0 {
-					sch.bucketsCon[bucketNum] = newBucket(bucketNum)
+				if len(bucketHosts[bucketNum]) == 0 {
+					bucketHosts[bucketNum] = []*Host{host} // append(bucketHosts[bucketNum], host)
+				} else {
+					bucketHosts[bucketNum] = append(bucketHosts[bucketNum], host)
 				}
-				bucket := sch.bucketsCon[bucketNum]
-				bucket.AddHost(host)
-				//sch.buckets[bucketNum] = append(sch.buckets[bucketNum], idx)
 			} else {
-				bucket := sch.backupsCon[bucketNum]
-				if bucket.Id == 0 {
-					sch.backupsCon[bucketNum] = newBucket(bucketNum)
+				if len(backupHosts[bucketNum]) == 0 {
+					backupHosts[bucketNum] = []*Host{host}
+				} else {
+					backupHosts[bucketNum] = append(bucketHosts[bucketNum], host)
 				}
-				bucket = sch.backupsCon[bucketNum]
-				bucket.AddHost(host)
-				//sch.backups[bucketNum] = append(sch.backups[bucketNum], idx)
 			}
 		}
 		idx++
+	}
+	for bucketNum, hosts := range bucketHosts {
+		sch.bucketsCon[bucketNum] = newBucket(bucketNum, hosts...)
+	}
+
+	for bucketNum, hosts := range backupHosts {
+		sch.backupsCon[bucketNum] = newBucket(bucketNum, hosts...)
 	}
 
 	// set sch.stats according to sch.buckets
@@ -132,6 +137,7 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 				break
 			}
 			sch.tryReward()
+			sch.tryRebalance()
 			time.Sleep(5 * time.Second)
 		}
 	}()
@@ -168,7 +174,7 @@ func getBucketByKey(hashFunc dbutil.HashMethod, bucketWidth int, key string) int
 func (sch *ManualScheduler) GetConsistentHosts(key string) (hosts []*Host) {
 	bucketNum := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
 	bucket := sch.bucketsCon[bucketNum]
-	hosts = make([]*Host, sch.N+len(sch.backupsCon[bucketNum].Hosts))
+	hosts = make([]*Host, sch.N+len(sch.backupsCon[bucketNum].hostsList))
 	hostsCon := bucket.GetHosts(key)
 	for i, host := range hostsCon {
 		if i < sch.N {
@@ -176,10 +182,8 @@ func (sch *ManualScheduler) GetConsistentHosts(key string) (hosts []*Host) {
 		}
 	}
 	// set the backup nodes in pos after main nodes
-	index := 0
-	for _, host := range sch.backupsCon[bucketNum].Hosts {
+	for index, host := range sch.backupsCon[bucketNum].hostsList {
 		hosts[sch.N+index] = host.host
-		index += 1
 	}
 	return
 }
@@ -213,7 +217,6 @@ type Feedback struct {
 
 func (sch *ManualScheduler) Feedback(host *Host, key string, startTime time.Time, adjust float64) {
 	bucket := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
-	//TODO 使用指针代替 index
 	sch.feedChan <- &Feedback{host: host, bucket: bucket, adjust: adjust}
 }
 
@@ -237,14 +240,19 @@ func (sch *ManualScheduler) procFeedback() {
 
 func (sch *ManualScheduler) feedback(host *Host, bucketNum int, startTime time.Time, adjust float64) {
 	bucket := sch.bucketsCon[bucketNum]
-	if adjust > 0 {
-		bucket.addResTime(host.Addr, startTime, adjust)
+	index, _ := bucket.getHostByAddr(host.Addr)
+	if index < 0 {
+		return
 	} else {
-		bucket.addConErr(host.Addr, startTime, adjust)
-		hostIsAlive := bucket.hostIsAlive(host.Addr)
-		if !hostIsAlive {
-			bucket.Score()
-			bucket.reBalance()
+		if adjust > 0 {
+			bucket.addResTime(host.Addr, startTime, adjust)
+		} else {
+			bucket.addConErr(host.Addr, startTime, adjust)
+			// do somethime while connection is Error
+			hostIsAlive := bucket.hostIsAlive(host.Addr)
+			if !hostIsAlive {
+				bucket.downHost(host.Addr)
+			}
 		}
 	}
 }
@@ -259,6 +267,14 @@ func (sch *ManualScheduler) tryReward() {
 			sch.rewardNode(i, 2, 16)
 		}
 	}
+}
+
+func (sch *ManualScheduler) tryRebalance() {
+	for _, bucket := range sch.bucketsCon {
+		bucket.reScore()
+		bucket.balance()
+	}
+
 }
 
 func swap(a []int, j, k int) {

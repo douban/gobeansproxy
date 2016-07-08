@@ -2,6 +2,7 @@ package dstore
 
 import (
 	"math"
+	"sort"
 	"time"
 )
 
@@ -9,53 +10,61 @@ const RINGLEN = 60
 const CONSISTENTLEN = 100
 
 type HostInBucket struct {
-	status     bool
-	score      float64
-	percent    int
-	oldPercent int
-	oldScore   float64
-	host       *Host
-	resTimes   RingQueue
+	status   bool
+	score    float64
+	oldScore float64
+	host     *Host
+	resTimes *RingQueue
 }
 
 type Bucket struct {
-	score      float64
-	oldScore   float64
 	Id         int
-	Hosts      map[string]HostInBucket
+	hostsList  []HostInBucket
 	consistent *Consistent
 }
 
-func newBucket(id int) Bucket {
+type ByName []HostInBucket
+
+func (b ByName) Len() int {
+	return len(b)
+}
+
+func (b ByName) Swap(i, j int) {
+	b[i], b[j] = b[j], b[i]
+}
+
+func (b ByName) Less(i, j int) bool {
+	return b[i].host.Addr < b[j].host.Addr
+}
+
+func newBucket(id int, hosts ...*Host) Bucket {
 	var bucket Bucket
 	bucket.Id = id
-	bucket.consistent = NewConsistent(CONSISTENTLEN)
-	bucket.Hosts = make(map[string]HostInBucket)
+	//	bucket.consistent = NewConsistent(CONSISTENTLEN)
+	//bucket.Hosts = make(map[string]HostInBucket)
+	bucket.hostsList = []HostInBucket{}
+	for _, host := range hosts {
+		bucket.hostsList = append(bucket.hostsList, newHostInBucket(host))
+	}
+	sort.Sort(ByName(bucket.hostsList))
+	// 这里直接初始化
+	bucket.consistent = NewConsistent(CONSISTENTLEN, len(bucket.hostsList))
 	return bucket
 }
 
-// add host in bucket
-func (bucket *Bucket) AddHost(host *Host) {
-	hostInBucket := HostInBucket{
-		true,
-		0,
-		0,
-		0,
-		0,
-		host,
-		*NewRingQueue(),
-	}
-
-	bucket.Hosts[host.Addr] = hostInBucket
-	bucket.consistent.Add([]string{host.Addr}...)
+func newHostInBucket(host *Host) HostInBucket {
+	var hib HostInBucket
+	hib.host = host
+	hib.resTimes = NewRingQueue()
+	return hib
 }
 
 // get host by key
 func (bucket *Bucket) GetHosts(key string) (hosts []*Host) {
-	// TODO  通过 consistent 拿到一个物理节点
-	hostName := bucket.consistent.Get(key)
-	for _, host := range bucket.Hosts {
-		if host.host.Addr != hostName {
+	hostIndex := bucket.consistent.offsetGet(key)
+	//	hostName := bucket.consistent.offsetGetGet(key)
+	for i, host := range bucket.hostsList {
+		if i != hostIndex {
 			hosts = append(hosts, host.host)
 		} else {
 			hosts = append([]*Host{host.host}, hosts...)
@@ -64,55 +73,70 @@ func (bucket *Bucket) GetHosts(key string) (hosts []*Host) {
 	return
 }
 
-func (bucket *Bucket) reBalance() {
-	var hostPercentage map[string]int
-	for addr, host := range bucket.Hosts {
-		hostPercentage[addr] = host.percent
-	}
-	bucket.consistent.rePercent(hostPercentage)
-
-	var precipitates map[string]int
-	for addr, host := range bucket.Hosts {
-		precipitate := host.percent - host.oldPercent
-		precipitates[addr] = precipitate
-	}
-}
-
-func (bucket *Bucket) Score() {
-	bucket.oldScore = 0
-	bucket.score = 0
-	for addr, host := range bucket.Hosts {
+func (bucket *Bucket) reScore() {
+	for _, host := range bucket.hostsList {
 		var score float64
+		// do nothing while the host is down/
 		if host.status == false {
 			host.oldScore = host.score
 			host.score = 0
-			println(addr)
 		} else {
 			host.oldScore = host.score
 			res := host.resTimes.GetResponses(10)
 			// use responseTime and responseCount
+			// TODO response.count == 0 ??
 			for i, response := range res {
 				score += ((response.Sum / float64(response.count)) + float64(response.count)) * math.Pow(0.9, 10-float64(i))
 			}
 			host.score = score
 		}
-		bucket.oldScore += host.oldScore
-		bucket.score += host.score
-	}
-	for _, host := range bucket.Hosts {
-		host.oldPercent = host.percent
-		host.percent = int(host.score/bucket.score) * 100
 	}
 }
 
+func (bucket *Bucket) balance() {
+	fromHost, toHost := bucket.getModify()
+	if bucket.hostsList[fromHost].score-bucket.hostsList[toHost].score > 0.5 {
+		bucket.consistent.reBalance(fromHost, toHost, 1)
+	}
+}
+
+func (bucket *Bucket) getModify() (fromHost, toHost int) {
+	var maxScore float64
+	var minScore float64
+	for i, host := range bucket.hostsList {
+		// do nothing while the host is down/
+		if host.status == false {
+			continue
+		}
+		if minScore == 0 {
+			minScore = host.score
+			maxScore = host.score
+			fromHost = i
+			toHost = i
+			continue
+		}
+		if host.score > maxScore {
+			maxScore = host.score
+			fromHost = i
+		}
+		if host.score < minScore {
+			minScore = host.score
+			toHost = i
+		}
+	}
+	return
+}
+
 func (bucket *Bucket) hostIsAlive(addr string) bool {
-	host := bucket.Hosts[addr]
-	// 10 设置成一个常量
+	_, host := bucket.getHostByAddr(addr)
+	//host := bucket.hostsList[hostIndex]
+	// 10 需要可以配置
 	errs := host.resTimes.GetErrors(10)
 	count := 0
 	for _, err := range errs {
 		count += err.count
 	}
+	// 3 需要可以配置
 	if count > 3 {
 		host.status = false
 	} else {
@@ -122,11 +146,25 @@ func (bucket *Bucket) hostIsAlive(addr string) bool {
 }
 
 func (bucket *Bucket) addResTime(host string, startTime time.Time, record float64) {
-	hostBucket := bucket.Hosts[host]
+	_, hostBucket := bucket.getHostByAddr(host)
 	hostBucket.resTimes.Push(startTime, record)
 }
 
 func (bucket *Bucket) addConErr(host string, startTime time.Time, error float64) {
-	hostBucket := bucket.Hosts[host]
+	_, hostBucket := bucket.getHostByAddr(host)
 	hostBucket.resTimes.PushErr(startTime, error)
+}
+
+func (bucket *Bucket) getHostByAddr(addr string) (int, HostInBucket) {
+	for i, host := range bucket.hostsList {
+		if host.host.Addr == addr {
+			return i, host
+		}
+	}
+	return -1, HostInBucket{}
+}
+
+func (bucket *Bucket) downHost(addr string) {
+	index, _ := bucket.getHostByAddr(addr)
+	bucket.consistent.remove(index)
 }
