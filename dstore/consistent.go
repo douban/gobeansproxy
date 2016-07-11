@@ -35,6 +35,7 @@ func (this *Consistent) hash(key string) int {
 }
 
 func (this *Consistent) remove(host int) {
+	//TODO 只允许有三个节点
 	preIndex := (host - 1 + 3) % 3
 	offsetsPre := this.offsets[preIndex]
 	middle := 0
@@ -47,18 +48,40 @@ func (this *Consistent) remove(host int) {
 	this.offsets[host] = this.offsets[preIndex]
 }
 
-func (this *Consistent) reBalance(indexFrom, indexTo int, offsetsentage int) {
-	x := indexFrom - indexTo
-	switch x {
-	case 1: // node2 -> node1 or node3 -> node2
-		this.offsets[indexTo] += offsetsentage
-	case -1: // node1 -> node2 or node2 -> node3
-		this.offsets[indexFrom] -= offsetsentage
-	case 2: // node3 -> node1
-		this.offsets[indexFrom] -= offsetsentage
-	case -2: // node1 -> node3
-		this.offsets[indexFrom] += offsetsentage
+func (this *Consistent) reBalance(indexFrom, indexTo int, step int) {
+	// from 节点的下一个节点
+	fromNext := (indexFrom + 1 + 3) % 3
+	if indexTo == fromNext {
+		fromPre := (indexFrom - 1 + 3) % 3
+		step = this.clearStep(indexFrom, fromPre, step)
+		value := this.offsets[indexFrom] - step
+		this.offsets[indexFrom] = this.clearOffset(value)
+	} else {
+		toNext := (indexTo + 1 + 3) % 3
+		step = this.clearStep(toNext, indexTo, step)
+		value := this.offsets[indexTo] + step
+		this.offsets[indexTo] = this.clearOffset(value)
 	}
+}
+
+func (this *Consistent) clearStep(modify, indexPre, step int) int {
+	interval := this.offsets[modify] - this.offsets[indexPre]
+	if interval < 0 {
+		interval += this.count
+	}
+	if step > interval {
+		step = interval
+	}
+	return step
+}
+
+func (this *Consistent) clearOffset(offset int) int {
+	if offset < 0 {
+		offset += this.count
+	} else if offset > this.count {
+		offset = offset % this.count
+	}
+	return offset
 }
 
 // 获取匹配主键。

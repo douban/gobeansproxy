@@ -38,7 +38,6 @@ func (q *RingQueue) Push(start time.Time, ResTime float64) error {
 	second := start.Second()
 	q.Lock()
 	defer q.Unlock()
-	// TODO 这里需要反转一下
 	if start.Sub(q.resData[second].ReqTime) > TIMEINTERVAL {
 		q.resData[second].Sum = ResTime
 		q.resData[second].count = 1

@@ -85,9 +85,11 @@ func (bucket *Bucket) reScore() {
 			host.oldScore = host.score
 			res := host.resTimes.GetResponses(10)
 			// use responseTime and responseCount
-			// TODO response.count == 0 ??
 			for i, response := range res {
-				score += ((response.Sum / float64(response.count)) + float64(response.count)) * math.Pow(0.9, 10-float64(i))
+				// while response.count == 0
+				if response.count > 0 {
+					score += response.Sum / float64(response.count) * math.Pow(0.9, 10-float64(i))
+				}
 			}
 			host.score = score
 		}
