@@ -136,7 +136,7 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 				close(sch.feedChan)
 				break
 			}
-			sch.tryReward()
+			sch.tryReward() //
 			sch.tryRebalance()
 			time.Sleep(5 * time.Second)
 		}
@@ -271,8 +271,7 @@ func (sch *ManualScheduler) tryReward() {
 
 func (sch *ManualScheduler) tryRebalance() {
 	for _, bucket := range sch.bucketsCon {
-		bucket.reScore()
-		bucket.balance()
+		bucket.ReBalance()
 	}
 
 }
@@ -313,20 +312,20 @@ func (sch *ManualScheduler) DivideKeysByBucket(keys []string) [][]string {
 // Result structure is { bucket1: {host1: score1, host2: score2, ...}, ... }
 func (sch *ManualScheduler) Stats() map[string]map[string]float64 {
 	r := make(map[string]map[string]float64, len(sch.buckets))
-	for i, hosts := range sch.buckets {
-		// 由于 r 在 web 接口端需要转换为 JSON，而 JSON 的 key 只支持 string，
-		// 所以在这里把 key 转为 string
+	for _, bucket := range sch.bucketsCon {
 		var bkt string
 		if sch.bucketWidth > 4 {
-			bkt = fmt.Sprintf("%02x", i)
+			bkt = fmt.Sprintf("%02x", bucket.Id)
 		} else {
-			bkt = fmt.Sprintf("%x", i)
+			bkt = fmt.Sprintf("%x", bucket.Id)
 		}
-		r[bkt] = make(map[string]float64, len(hosts))
-		for _, hostIdx := range hosts {
-			r[bkt][sch.hosts[hostIdx].Addr] = sch.stats[i][hostIdx]
+		r[bkt] = make(map[string]float64, len(bucket.hostsList))
+		for _, host := range bucket.hostsList {
+			r[bkt][host.host.Addr] = host.score
 		}
+
 	}
+
 	return r
 }
 

@@ -22,7 +22,7 @@ func NewConsistent(count int, nodesNum int) *Consistent {
 	lenNodes := consistent.count / nodesNum
 
 	for i := 0; i < nodesNum; i++ {
-		consistent.offsets = append(consistent.offsets, lenNodes*(i+1))
+		consistent.offsets = append(consistent.offsets, lenNodes*i)
 	}
 	return consistent
 }
@@ -31,7 +31,7 @@ func NewConsistent(count int, nodesNum int) *Consistent {
 func (this *Consistent) hash(key string) int {
 	hash := fnv.New32a()
 	hash.Write([]byte(key))
-	return int(hash.Sum32()) % 100
+	return int(hash.Sum32()) % this.count
 }
 
 func (this *Consistent) remove(host int) {

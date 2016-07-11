@@ -40,14 +40,11 @@ func (b ByName) Less(i, j int) bool {
 func newBucket(id int, hosts ...*Host) Bucket {
 	var bucket Bucket
 	bucket.Id = id
-	//	bucket.consistent = NewConsistent(CONSISTENTLEN)
-	//bucket.Hosts = make(map[string]HostInBucket)
 	bucket.hostsList = []HostInBucket{}
 	for _, host := range hosts {
 		bucket.hostsList = append(bucket.hostsList, newHostInBucket(host))
 	}
 	sort.Sort(ByName(bucket.hostsList))
-	// 这里直接初始化
 	bucket.consistent = NewConsistent(CONSISTENTLEN, len(bucket.hostsList))
 	return bucket
 }
@@ -62,7 +59,6 @@ func newHostInBucket(host *Host) HostInBucket {
 // get host by key
 func (bucket *Bucket) GetHosts(key string) (hosts []*Host) {
 	hostIndex := bucket.consistent.offsetGet(key)
-	//	hostName := bucket.consistent.offsetGetGet(key)
 	for i, host := range bucket.hostsList {
 		if i != hostIndex {
 			hosts = append(hosts, host.host)
@@ -71,6 +67,11 @@ func (bucket *Bucket) GetHosts(key string) (hosts []*Host) {
 		}
 	}
 	return
+}
+
+func (bucket *Bucket) ReBalance() {
+	bucket.reScore()
+	bucket.balance()
 }
 
 func (bucket *Bucket) reScore() {
