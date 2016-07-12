@@ -24,14 +24,17 @@ type ProxyConfig struct {
 }
 
 type DStoreConfig struct {
-	N                   int `yaml:",omitempty"`
-	W                   int `yaml:",omitempty"`
-	R                   int `yaml:",omitempty"`
-	MaxFreeConnsPerHost int `yaml:"max_free_conns_per_host,omitempty"`
-	ConnectTimeoutMs    int `yaml:"connect_timeout_ms,omitempty"`
-	DialFailSilenceMs   int `yaml:"dial_fail_silence_ms,omitempty"`
-	WriteTimeoutMs      int `yaml:"write_timeout_ms,omitempty"`
-	ReadTimeoutMs       int `yaml:"read_timeout_ms,omitempty"`
+	N                   int     `yaml:",omitempty"`
+	W                   int     `yaml:",omitempty"`
+	R                   int     `yaml:",omitempty"`
+	MaxFreeConnsPerHost int     `yaml:"max_free_conns_per_host,omitempty"`
+	ConnectTimeoutMs    int     `yaml:"connect_timeout_ms,omitempty"`
+	DialFailSilenceMs   int     `yaml:"dial_fail_silence_ms,omitempty"`
+	WriteTimeoutMs      int     `yaml:"write_timeout_ms,omitempty"`
+	ReadTimeoutMs       int     `yaml:"read_timeout_ms,omitempty"`
+	ResTimeCount        int     `yaml:"response_time_counts,omitempty"`
+	MaxConnectErrors    int     `yaml:"max_connect_errors,omitempty"`
+	ScoreDeviation      float64 `yaml:"score_deviation,omitempty"`
 }
 
 func (c *ProxyConfig) InitDefault() {

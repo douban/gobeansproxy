@@ -2,8 +2,6 @@ package dstore
 
 import (
 	"fmt"
-	"math"
-	"math/rand"
 	"strconv"
 	"time"
 
@@ -217,12 +215,12 @@ type Feedback struct {
 
 func (sch *ManualScheduler) Feedback(host *Host, key string, startTime time.Time, adjust float64) {
 	bucket := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
-	sch.feedChan <- &Feedback{host: host, bucket: bucket, adjust: adjust}
+	sch.feedChan <- &Feedback{host: host, bucket: bucket, adjust: adjust, startTime: startTime}
 }
 
 func (sch *ManualScheduler) FeedbackTime(host *Host, key string, startTime time.Time, timeUsed time.Duration) {
-	n := timeUsed.Seconds()
-	sch.Feedback(host, key, startTime, 1-math.Sqrt(n)*n)
+	n := timeUsed.Nanoseconds() / 1000
+	sch.Feedback(host, key, startTime, float64(n))
 }
 
 func (sch *ManualScheduler) procFeedback() {
@@ -231,7 +229,6 @@ func (sch *ManualScheduler) procFeedback() {
 		fb, ok := <-sch.feedChan
 		if !ok {
 			// channel was closed
-			logger.Infof("close procFeedback goroutine")
 			break
 		}
 		sch.feedback(fb.host, fb.bucket, fb.startTime, fb.adjust)
@@ -248,24 +245,13 @@ func (sch *ManualScheduler) feedback(host *Host, bucketNum int, startTime time.T
 			bucket.addResTime(host.Addr, startTime, adjust)
 		} else {
 			bucket.addConErr(host.Addr, startTime, adjust)
-			// do somethime while connection is Error
-			hostIsAlive := bucket.hostIsAlive(host.Addr)
-			if !hostIsAlive {
-				bucket.downHost(host.Addr)
-			}
 		}
 	}
 }
 
 func (sch *ManualScheduler) tryReward() {
-	for i, _ := range sch.buckets {
-		// random reward 2nd, 3rd
-		if sch.N > 1 {
-			sch.rewardNode(i, 1, 10)
-		}
-		if sch.N > 2 {
-			sch.rewardNode(i, 2, 16)
-		}
+	for _, bucket := range sch.bucketsCon {
+		sch.rewardNode(bucket.Id)
 	}
 }
 
@@ -280,22 +266,20 @@ func swap(a []int, j, k int) {
 	a[j], a[k] = a[k], a[j]
 }
 
-func (sch *ManualScheduler) rewardNode(bucket int, node int, maxReward int) {
-	hostIdx := sch.buckets[bucket][node]
-	if item, err := sch.hosts[hostIdx].Get("@"); err == nil {
-		item.Free()
-		var reward float64 = 0.0
-		stat := sch.stats[bucket][hostIdx]
-		if stat < 0 {
-			reward = 0 - stat
+func (sch *ManualScheduler) rewardNode(bucket int) {
+
+	hosts := sch.bucketsCon[bucket].hostsList
+	for _, hostBucket := range hosts {
+		start := time.Now()
+		if _, err := hostBucket.host.Get("@"); err == nil {
+			timeUsed := time.Now().Sub(start)
+			n := timeUsed.Nanoseconds() / 1000 // to Microsecond
+			sch.feedChan <- &Feedback{host: hostBucket.host, bucket: bucket, adjust: float64(n), startTime: start}
 		} else {
-			reward = float64(rand.Intn(maxReward))
+			logger.Infof(
+				"beansdb server %s in Bucket %X's second node Down while try_reward, err is %s",
+				hostBucket.host.Addr, bucket, err)
 		}
-		sch.feedChan <- &Feedback{host: sch.hosts[hostIdx], bucket: bucket, adjust: reward}
-	} else {
-		logger.Infof(
-			"beansdb server %s in Bucket %X's second node Down while try_reward, err is %s",
-			sch.hosts[hostIdx].Addr, bucket, err)
 	}
 }
 

@@ -25,5 +25,8 @@ var (
 		ConnectTimeoutMs:    300,
 		WriteTimeoutMs:      2000,
 		DialFailSilenceMs:   5000,
+		ResTimeCount:        10,
+		MaxConnectErrors:    3,
+		ScoreDeviation:      10,
 	}
 )

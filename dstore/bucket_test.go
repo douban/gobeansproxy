@@ -1,12 +1,20 @@
 package dstore
 
 import (
+	"github.intra.douban.com/coresys/gobeansproxy/config"
+	"github.intra.douban.com/coresys/gobeansproxy/utils"
+	"path"
 	"sync"
 	"testing"
 	"time"
 )
 
 func TestAddResTime(t *testing.T) {
+	homeDir := utils.GetProjectHomeDir()
+	confdir := path.Join(homeDir, "conf")
+	proxyConf := &config.Proxy
+	proxyConf.Load(confdir)
+
 	testHost := []struct {
 		Addr    string
 		resTime []float64
@@ -44,7 +52,6 @@ func TestAddResTime(t *testing.T) {
 	}
 	wg.Wait()
 	bucket.ReBalance()
-	t.Log("bucket is ", bucket)
 	for _, h := range bucket.hostsList {
 		if h.score == 0 {
 			t.Errorf("the host %s got score %f", h.host.Addr, h.score)
@@ -53,6 +60,11 @@ func TestAddResTime(t *testing.T) {
 }
 
 func TestDownHost(t *testing.T) {
+	homeDir := utils.GetProjectHomeDir()
+	confdir := path.Join(homeDir, "conf")
+	proxyConf := &config.Proxy
+	proxyConf.Load(confdir)
+
 	testHost := []struct {
 		Addr    string
 		resTime []float64

@@ -52,6 +52,7 @@ func newBucket(id int, hosts ...*Host) Bucket {
 func newHostInBucket(host *Host) HostInBucket {
 	var hib HostInBucket
 	hib.host = host
+	hib.status = true
 	hib.resTimes = NewRingQueue()
 	return hib
 }
@@ -75,7 +76,7 @@ func (bucket *Bucket) ReBalance() {
 }
 
 func (bucket *Bucket) reScore() {
-	for _, host := range bucket.hostsList {
+	for i, host := range bucket.hostsList {
 		var score float64
 		// do nothing while the host is down/
 		if host.status == false {
@@ -83,7 +84,7 @@ func (bucket *Bucket) reScore() {
 			host.score = 0
 		} else {
 			host.oldScore = host.score
-			res := host.resTimes.GetResponses(10)
+			res := host.resTimes.GetResponses(proxyConf.ResTimeCount)
 			// use responseTime and responseCount
 			for i, response := range res {
 				// while response.count == 0
@@ -92,13 +93,16 @@ func (bucket *Bucket) reScore() {
 				}
 			}
 			host.score = score
+			logger.Errorf("host %s got score %f", host.host.Addr, host.score)
 		}
+		bucket.hostsList[i] = host
 	}
 }
 
 func (bucket *Bucket) balance() {
 	fromHost, toHost := bucket.getModify()
-	if bucket.hostsList[fromHost].score-bucket.hostsList[toHost].score > 0.5 {
+	// TODO
+	if bucket.hostsList[fromHost].score-bucket.hostsList[toHost].score > proxyConf.ScoreDeviation {
 		bucket.consistent.reBalance(fromHost, toHost, 1)
 	}
 }
@@ -132,30 +136,33 @@ func (bucket *Bucket) getModify() (fromHost, toHost int) {
 
 func (bucket *Bucket) hostIsAlive(addr string) bool {
 	_, host := bucket.getHostByAddr(addr)
-	//host := bucket.hostsList[hostIndex]
-	// 10 需要可以配置
-	errs := host.resTimes.GetErrors(10)
+	errs := host.resTimes.GetErrors(proxyConf.ResTimeCount)
 	count := 0
 	for _, err := range errs {
 		count += err.count
 	}
-	// 3 需要可以配置
-	if count > 3 {
-		host.status = false
+	if count > proxyConf.MaxConnectErrors {
+		return false
 	} else {
-		host.status = true
+		return true
 	}
-	return host.status
 }
 
 func (bucket *Bucket) addResTime(host string, startTime time.Time, record float64) {
 	_, hostBucket := bucket.getHostByAddr(host)
+	if record > 0 {
+		hostBucket.status = true
+	}
 	hostBucket.resTimes.Push(startTime, record)
 }
 
 func (bucket *Bucket) addConErr(host string, startTime time.Time, error float64) {
 	_, hostBucket := bucket.getHostByAddr(host)
 	hostBucket.resTimes.PushErr(startTime, error)
+	hostisalive := bucket.hostIsAlive(host)
+	if !hostisalive {
+		bucket.downHost(host)
+	}
 }
 
 func (bucket *Bucket) getHostByAddr(addr string) (int, HostInBucket) {
@@ -168,6 +175,8 @@ func (bucket *Bucket) getHostByAddr(addr string) (int, HostInBucket) {
 }
 
 func (bucket *Bucket) downHost(addr string) {
-	index, _ := bucket.getHostByAddr(addr)
+	index, host := bucket.getHostByAddr(addr)
+	host.status = false
+	bucket.hostsList[index] = host
 	bucket.consistent.remove(index)
 }
