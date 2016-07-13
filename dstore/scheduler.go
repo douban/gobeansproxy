@@ -27,9 +27,6 @@ type Scheduler interface {
 	FeedbackTime(host *Host, key string, startTime time.Time, timeUsed time.Duration)
 
 	// route a key to hosts
-	GetHostsByKey(key string) []*Host
-
-	// route a key to hosts
 	GetConsistentHosts(key string) (hosts []*Host)
 
 	// route some keys to group of hosts
@@ -47,15 +44,10 @@ type ManualScheduler struct {
 	hosts []*Host
 
 	// buckets[bucket] is a list of host index.
-	buckets    [][]int
-	bucketsCon []Bucket
+	bucketsCon []*Bucket
 
 	// backups[bucket] is a list of host index.
-	backups    [][]int
-	backupsCon []Bucket
-
-	// stats[bucket][host_index] is the score.
-	stats [][]float64
+	backupsCon []*Bucket
 
 	hashMethod dbutil.HashMethod
 
@@ -80,9 +72,9 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 	sch := new(ManualScheduler)
 	sch.N = n
 	sch.hosts = make([]*Host, len(route.Servers))
-	sch.bucketsCon = make([]Bucket, route.NumBucket)
-	sch.backupsCon = make([]Bucket, route.NumBucket)
-	sch.stats = make([][]float64, route.NumBucket)
+	sch.bucketsCon = make([]*Bucket, route.NumBucket)
+	sch.backupsCon = make([]*Bucket, route.NumBucket)
+	// sch.stats = make([][]float64, route.NumBucket)
 
 	idx := 0
 
@@ -118,9 +110,9 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 	}
 
 	// set sch.stats according to sch.buckets
-	for b := 0; b < route.NumBucket; b++ {
-		sch.stats[b] = make([]float64, len(sch.hosts))
-	}
+	// for b := 0; b < route.NumBucket; b++ {
+	// 	sch.stats[b] = make([]float64, len(sch.hosts))
+	// }
 	sch.hashMethod = dbutil.Fnv1a
 	sch.bucketWidth = calBitWidth(route.NumBucket)
 
@@ -134,7 +126,7 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 				close(sch.feedChan)
 				break
 			}
-			sch.tryReward() //
+			sch.checkFails() //
 			sch.tryRebalance()
 			time.Sleep(5 * time.Second)
 		}
@@ -186,28 +178,8 @@ func (sch *ManualScheduler) GetConsistentHosts(key string) (hosts []*Host) {
 	return
 }
 
-func (sch *ManualScheduler) GetHostsByKey(key string) (hosts []*Host) {
-	bucket := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
-	// Get Host By key
-	hosts = make([]*Host, sch.N+len(sch.backups[bucket]))
-
-	// set the main nodes
-	for i, hostIdx := range sch.buckets[bucket] {
-		if i < sch.N {
-			hosts[i] = sch.hosts[hostIdx]
-		}
-	}
-	// set the backup nodes in pos after main nodes
-	for i, hostIdx := range sch.backups[bucket] {
-		hosts[sch.N+i] = sch.hosts[hostIdx]
-	}
-	return
-}
-
-// feed back
-
 type Feedback struct {
-	host      *Host
+	hostname  string
 	bucket    int
 	adjust    float64
 	startTime time.Time
@@ -215,7 +187,7 @@ type Feedback struct {
 
 func (sch *ManualScheduler) Feedback(host *Host, key string, startTime time.Time, adjust float64) {
 	bucket := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
-	sch.feedChan <- &Feedback{host: host, bucket: bucket, adjust: adjust, startTime: startTime}
+	sch.feedChan <- &Feedback{hostname: host.Addr, bucket: bucket, adjust: adjust, startTime: startTime}
 }
 
 func (sch *ManualScheduler) FeedbackTime(host *Host, key string, startTime time.Time, timeUsed time.Duration) {
@@ -231,27 +203,27 @@ func (sch *ManualScheduler) procFeedback() {
 			// channel was closed
 			break
 		}
-		sch.feedback(fb.host, fb.bucket, fb.startTime, fb.adjust)
+		sch.feedback(fb.hostname, fb.bucket, fb.startTime, fb.adjust)
 	}
 }
 
-func (sch *ManualScheduler) feedback(host *Host, bucketNum int, startTime time.Time, adjust float64) {
+func (sch *ManualScheduler) feedback(hostname string, bucketNum int, startTime time.Time, adjust float64) {
 	bucket := sch.bucketsCon[bucketNum]
-	index, _ := bucket.getHostByAddr(host.Addr)
+	index, _ := bucket.getHostByAddr(hostname)
 	if index < 0 {
 		return
 	} else {
 		if adjust > 0 {
-			bucket.addResTime(host.Addr, startTime, adjust)
+			bucket.addResTime(hostname, startTime, adjust)
 		} else {
-			bucket.addConErr(host.Addr, startTime, adjust)
+			bucket.addConErr(hostname, startTime, adjust)
 		}
 	}
 }
 
-func (sch *ManualScheduler) tryReward() {
+func (sch *ManualScheduler) checkFails() {
 	for _, bucket := range sch.bucketsCon {
-		sch.rewardNode(bucket.Id)
+		sch.checkFailsForBucket(bucket)
 	}
 }
 
@@ -262,19 +234,18 @@ func (sch *ManualScheduler) tryRebalance() {
 
 }
 
-func swap(a []int, j, k int) {
-	a[j], a[k] = a[k], a[j]
-}
+func (sch *ManualScheduler) checkFailsForBucket(bucket *Bucket) {
 
-func (sch *ManualScheduler) rewardNode(bucket int) {
-
-	hosts := sch.bucketsCon[bucket].hostsList
+	hosts := bucket.hostsList
 	for _, hostBucket := range hosts {
-		start := time.Now()
-		if _, err := hostBucket.host.Get("@"); err == nil {
-			timeUsed := time.Now().Sub(start)
-			n := timeUsed.Nanoseconds() / 1000 // to Microsecond
-			sch.feedChan <- &Feedback{host: hostBucket.host, bucket: bucket, adjust: float64(n), startTime: start}
+		//		start := time.Now()
+		if item, err := hostBucket.host.Get("@"); err == nil {
+			item.Free()
+			bucket.aliveHost(hostBucket.host.Addr)
+
+			//		timeUsed := time.Now().Sub(start)
+			//			n := timeUsed.Nanoseconds() / 1000 // to Microsecond
+			//			sch.feedChan <- &Feedback{hostname: hostBucket.host.Addr, bucket: bucket, adjust: float64(n), startTime: start}
 		} else {
 			logger.Infof(
 				"beansdb server %s in Bucket %X's second node Down while try_reward, err is %s",
@@ -295,7 +266,7 @@ func (sch *ManualScheduler) DivideKeysByBucket(keys []string) [][]string {
 // Stats return the score of eache addr, it's used in web interface.
 // Result structure is { bucket1: {host1: score1, host2: score2, ...}, ... }
 func (sch *ManualScheduler) Stats() map[string]map[string]float64 {
-	r := make(map[string]map[string]float64, len(sch.buckets))
+	r := make(map[string]map[string]float64, len(sch.bucketsCon))
 	for _, bucket := range sch.bucketsCon {
 		var bkt string
 		if sch.bucketWidth > 4 {
@@ -309,6 +280,7 @@ func (sch *ManualScheduler) Stats() map[string]map[string]float64 {
 		}
 
 	}
+	logger.Errorf("stats is %v", r)
 
 	return r
 }

@@ -95,3 +95,12 @@ func (q *RingQueue) GetErrors(num int) (responses []Response) {
 		return q.errData[offset:second]
 	}
 }
+
+func (q *RingQueue) clear() {
+	q.Lock()
+	q.Unlock()
+	for i := 0; i < QUEUECAP; i++ {
+		q.errData[i] = Response{}
+		q.resData[i] = Response{}
+	}
+}

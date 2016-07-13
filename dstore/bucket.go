@@ -19,11 +19,11 @@ type HostInBucket struct {
 
 type Bucket struct {
 	Id         int
-	hostsList  []HostInBucket
+	hostsList  []*HostInBucket
 	consistent *Consistent
 }
 
-type ByName []HostInBucket
+type ByName []*HostInBucket
 
 func (b ByName) Len() int {
 	return len(b)
@@ -37,10 +37,10 @@ func (b ByName) Less(i, j int) bool {
 	return b[i].host.Addr < b[j].host.Addr
 }
 
-func newBucket(id int, hosts ...*Host) Bucket {
-	var bucket Bucket
+func newBucket(id int, hosts ...*Host) *Bucket {
+	bucket := new(Bucket)
 	bucket.Id = id
-	bucket.hostsList = []HostInBucket{}
+	bucket.hostsList = []*HostInBucket{}
 	for _, host := range hosts {
 		bucket.hostsList = append(bucket.hostsList, newHostInBucket(host))
 	}
@@ -49,12 +49,14 @@ func newBucket(id int, hosts ...*Host) Bucket {
 	return bucket
 }
 
-func newHostInBucket(host *Host) HostInBucket {
-	var hib HostInBucket
-	hib.host = host
-	hib.status = true
-	hib.resTimes = NewRingQueue()
-	return hib
+func newHostInBucket(host *Host) *HostInBucket {
+	return &HostInBucket{
+		status:   true,
+		score:    0,
+		oldScore: 0,
+		host:     host,
+		resTimes: NewRingQueue(),
+	}
 }
 
 // get host by key
@@ -115,7 +117,7 @@ func (bucket *Bucket) getModify() (fromHost, toHost int) {
 		if host.status == false {
 			continue
 		}
-		if minScore == 0 {
+		if i == 0 {
 			minScore = host.score
 			maxScore = host.score
 			fromHost = i
@@ -148,7 +150,15 @@ func (bucket *Bucket) hostIsAlive(addr string) bool {
 	}
 }
 
+func (bucket *Bucket) aliveHost(addr string) {
+	// TODO 清除历史上的 Errors
+	// 还需要清除 response time
+	_, hostBucket := bucket.getHostByAddr(addr)
+	hostBucket.status = true
+}
+
 func (bucket *Bucket) addResTime(host string, startTime time.Time, record float64) {
+	// TODO 每次添加都会排除掉
 	_, hostBucket := bucket.getHostByAddr(host)
 	if record > 0 {
 		hostBucket.status = true
@@ -165,18 +175,23 @@ func (bucket *Bucket) addConErr(host string, startTime time.Time, error float64)
 	}
 }
 
-func (bucket *Bucket) getHostByAddr(addr string) (int, HostInBucket) {
+func (bucket *Bucket) getHostByAddr(addr string) (int, *HostInBucket) {
 	for i, host := range bucket.hostsList {
 		if host.host.Addr == addr {
 			return i, host
 		}
 	}
-	return -1, HostInBucket{}
+	return -1, &HostInBucket{}
 }
 
 func (bucket *Bucket) downHost(addr string) {
 	index, host := bucket.getHostByAddr(addr)
-	host.status = false
-	bucket.hostsList[index] = host
+	host.down()
+	// make suce bucket.hostsList[index].status = false
 	bucket.consistent.remove(index)
+}
+
+func (hb *HostInBucket) down() {
+	hb.status = false
+	hb.resTimes.clear()
 }
