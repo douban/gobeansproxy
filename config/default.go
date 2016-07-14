@@ -28,5 +28,6 @@ var (
 		ResTimeCount:        10,
 		MaxConnectErrors:    3,
 		ScoreDeviation:      10,
+		ItemSizeStats:       4096,
 	}
 )

@@ -27,7 +27,7 @@ type Scheduler interface {
 	FeedbackTime(host *Host, key string, startTime time.Time, timeUsed time.Duration)
 
 	// route a key to hosts
-	GetConsistentHosts(key string) (hosts []*Host)
+	GetHostsByKey(key string) (hosts []*Host)
 
 	// route some keys to group of hosts
 	DivideKeysByBucket(keys []string) [][]string
@@ -161,7 +161,7 @@ func getBucketByKey(hashFunc dbutil.HashMethod, bucketWidth int, key string) int
 	return (int)(h >> (uint)(32-bucketWidth))
 }
 
-func (sch *ManualScheduler) GetConsistentHosts(key string) (hosts []*Host) {
+func (sch *ManualScheduler) GetHostsByKey(key string) (hosts []*Host) {
 	bucketNum := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
 	bucket := sch.bucketsCon[bucketNum]
 	hosts = make([]*Host, sch.N+len(sch.backupsCon[bucketNum].hostsList))

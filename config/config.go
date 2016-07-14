@@ -35,6 +35,7 @@ type DStoreConfig struct {
 	ResTimeCount        int     `yaml:"response_time_counts,omitempty"`
 	MaxConnectErrors    int     `yaml:"max_connect_errors,omitempty"`
 	ScoreDeviation      float64 `yaml:"score_deviation,omitempty"`
+	ItemSizeStats       int     `yaml:"item_size_stats,omitempty"`
 }
 
 func (c *ProxyConfig) InitDefault() {

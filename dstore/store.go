@@ -62,7 +62,7 @@ func (c *StorageClient) Clean() {
 func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 	c.sched = GetScheduler()
 
-	hosts := c.sched.GetConsistentHosts(key)
+	hosts := c.sched.GetHostsByKey(key)
 	cnt := 0
 	for _, host := range hosts[:c.N] {
 		start := time.Now()
@@ -70,7 +70,9 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 		if err == nil {
 			cnt++
 			if item != nil {
-				c.sched.FeedbackTime(host, key, start, time.Now().Sub(start))
+				if item.Cap < proxyConf.ItemSizeStats {
+					c.sched.FeedbackTime(host, key, start, time.Now().Sub(start))
+				}
 				c.SuccessedTargets = []string{host.Addr}
 				return
 			} else {
@@ -97,19 +99,24 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets []string, err error) {
 	numKeys := len(keys)
 	rs = make(map[string]*mc.Item, numKeys)
-	hosts := c.sched.GetConsistentHosts(keys[0])
+	hosts := c.sched.GetHostsByKey(keys[0])
 	suc := 0
 	for _, host := range hosts[:c.N] {
 		start := time.Now()
 		r, er := host.GetMulti(keys)
 		if er == nil {
+			end := time.Now()
 			suc += 1
 			if r != nil {
 				targets = append(targets, host.Addr)
-				c.sched.FeedbackTime(host, keys[0], start, time.Now().Sub(start))
 			}
 
 			for k, v := range r {
+				if v != nil {
+					if v.Cap < proxyConf.ItemSizeStats {
+						c.sched.FeedbackTime(host, keys[0], start, end.Sub(start))
+					}
+				}
 				rs[k] = v
 			}
 			if len(rs) == numKeys {
@@ -181,7 +188,7 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 
 func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {
 	c.sched = GetScheduler()
-	hosts := c.sched.GetConsistentHosts(key)
+	hosts := c.sched.GetHostsByKey(key)
 	ok = false
 	err = ErrWriteFailed
 	if len(hosts) >= c.N {
@@ -246,7 +253,7 @@ func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 	// NOTE: gobeansdb now do not support `append`, this is not tested.
 	c.sched = GetScheduler()
 	suc := 0
-	for i, host := range c.sched.GetConsistentHosts(key) {
+	for i, host := range c.sched.GetHostsByKey(key) {
 		start := time.Now()
 		if ok, err = host.Append(key, value); err == nil && ok {
 			suc++
@@ -275,7 +282,7 @@ func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 	c.sched = GetScheduler()
 	suc := 0
-	for i, host := range c.sched.GetConsistentHosts(key) {
+	for i, host := range c.sched.GetHostsByKey(key) {
 		r, e := host.Incr(key, value)
 		if e != nil {
 			err = e
@@ -312,7 +319,7 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 	errCnt := 0
 	lastErrStr := ""
 	failedHosts := make([]string, 0, 2)
-	for i, host := range c.sched.GetConsistentHosts(key) {
+	for i, host := range c.sched.GetHostsByKey(key) {
 		start := time.Now()
 		ok, err := host.Delete(key)
 		if ok {
