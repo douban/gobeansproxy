@@ -94,7 +94,6 @@ func (bucket *Bucket) reScore() {
 			}
 			if count > 0 {
 				host.score = Sum / float64(count)
-				logger.Errorf("%v score is %f", host, Sum)
 			} else {
 				host.score = 0
 			}
@@ -108,6 +107,7 @@ func (bucket *Bucket) balance() {
 	fromHost, toHost := bucket.getModify()
 	// TODO
 	if bucket.needBalance(fromHost, toHost) {
+		logger.Errorf("bucket %d BALANCE: from host-%s to host-%s ", bucket.Id, bucket.hostsList[fromHost].host.Addr, bucket.hostsList[toHost].host.Addr)
 		bucket.consistent.reBalance(fromHost, toHost, 1)
 	}
 }
@@ -122,16 +122,18 @@ func (bucket *Bucket) needBalance(fromIndex, toIndex int) bool {
 func (bucket *Bucket) getModify() (fromHost, toHost int) {
 	var maxScore float64
 	var minScore float64
+	count := 0
 	for i, host := range bucket.hostsList {
 		// do nothing while the host is down/
 		if host.status == false {
 			continue
 		}
-		if i == 0 {
+		if count == 0 {
 			minScore = host.score
 			maxScore = host.score
 			fromHost = i
 			toHost = i
+			count++
 			continue
 		}
 		if host.score > maxScore {
