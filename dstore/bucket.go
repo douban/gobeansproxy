@@ -86,7 +86,7 @@ func (bucket *Bucket) reScore() {
 			host.score = 0
 		} else {
 			host.oldScore = host.score
-			res := host.resTimes.GetResponses(proxyConf.ResTimeCount)
+			res := host.resTimes.GetResponses(proxyConf.ResTimeSeconds)
 			// use responseTime and responseCount
 			for _, response := range res {
 				Sum += response.Sum
@@ -148,7 +148,7 @@ func (bucket *Bucket) getModify() (fromHost, toHost int) {
 
 func (bucket *Bucket) hostIsAlive(addr string) bool {
 	_, host := bucket.getHostByAddr(addr)
-	errs := host.resTimes.GetErrors(proxyConf.ResTimeCount)
+	errs := host.resTimes.GetErrors(proxyConf.ErrorSeconds)
 	count := 0
 	for _, err := range errs {
 		count += err.count

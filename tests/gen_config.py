@@ -79,7 +79,8 @@ proxy_conf_tmpl = {
         'r': 1,
         'read_timeout_ms': 2000,
         'write_timeout_ms': 2000,
-        'response_time_counts': 10,
+        'response_time_seconds': 10,
+        'error_seconds': 10,
         'max_connect_errors': 3,
         'score_deviation': 10
     },

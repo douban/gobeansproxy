@@ -51,15 +51,16 @@ func (consistent *Consistent) remove(host int) {
 	consistent.Lock()
 	defer consistent.Unlock()
 	//TODO 只允许有三个节点
-	preIndex := consistent.getPre(host)       //(host - 1 + 3) % 3
-	offsetsPre := consistent.getPre(preIndex) //consistent.offsets[preIndex]
-	middle := 0
+	preIndex := consistent.getPre(host)        //(host - 1 + 3) % 3
+	offsetsPre := consistent.offsets[preIndex] //consistent.offsets[preIndex]
+	offsetsCount := 0
 	if offsetsPre > consistent.offsets[host] {
-		middle = (consistent.offsets[host] + consistent.count - offsetsPre)
+		offsetsCount = (consistent.offsets[host] + consistent.count - offsetsPre)
 	} else {
-		middle = (consistent.offsets[host] - offsetsPre)
+		offsetsCount = (consistent.offsets[host] - offsetsPre)
 	}
-	consistent.offsets[preIndex] += (middle / 2)
+	prevalue := consistent.offsets[preIndex] + (offsetsCount / 2)
+	consistent.offsets[preIndex] = consistent.clearOffset(prevalue)
 	consistent.offsets[host] = consistent.offsets[preIndex]
 }
 
