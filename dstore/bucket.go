@@ -1,7 +1,6 @@
 package dstore
 
 import (
-	"math"
 	"sort"
 	"time"
 )
@@ -79,8 +78,9 @@ func (bucket *Bucket) ReBalance() {
 
 func (bucket *Bucket) reScore() {
 	for i, host := range bucket.hostsList {
-		var score float64
-		// do nothing while the host is down/
+		var Sum float64
+		var count int
+		// while the host is down/
 		if host.status == false {
 			host.oldScore = host.score
 			host.score = 0
@@ -88,13 +88,16 @@ func (bucket *Bucket) reScore() {
 			host.oldScore = host.score
 			res := host.resTimes.GetResponses(proxyConf.ResTimeCount)
 			// use responseTime and responseCount
-			for i, response := range res {
-				// while response.count == 0
-				if response.count > 0 {
-					score += response.Sum / float64(response.count) * math.Pow(0.9, 10-float64(i))
-				}
+			for _, response := range res {
+				Sum += response.Sum
+				count += response.count
 			}
-			host.score = score
+			if count > 0 {
+				host.score = Sum / float64(count)
+				logger.Errorf("%v score is %f", host, Sum)
+			} else {
+				host.score = 0
+			}
 			logger.Errorf("host %s got score %f", host.host.Addr, host.score)
 		}
 		bucket.hostsList[i] = host
@@ -104,9 +107,16 @@ func (bucket *Bucket) reScore() {
 func (bucket *Bucket) balance() {
 	fromHost, toHost := bucket.getModify()
 	// TODO
-	if bucket.hostsList[fromHost].score-bucket.hostsList[toHost].score > proxyConf.ScoreDeviation {
+	if bucket.needBalance(fromHost, toHost) {
 		bucket.consistent.reBalance(fromHost, toHost, 1)
 	}
+}
+
+func (bucket *Bucket) needBalance(fromIndex, toIndex int) bool {
+	if bucket.hostsList[fromIndex].score-bucket.hostsList[toIndex].score > proxyConf.ScoreDeviation {
+		return true
+	}
+	return false
 }
 
 func (bucket *Bucket) getModify() (fromHost, toHost int) {

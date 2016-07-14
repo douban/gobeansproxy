@@ -5,6 +5,11 @@ import (
 	"sync"
 )
 
+const (
+	// 最少保留 MINKEYS/count 的 key 在某一个节点上
+	MINKEYS = 1
+)
+
 // 一致性哈希变种
 type Consistent struct {
 	sync.RWMutex
@@ -78,7 +83,7 @@ func (consistent *Consistent) reBalance(indexFrom, indexTo int, step int) {
 }
 
 func (consistent *Consistent) clearStep(modify, indexPre, step int) int {
-	interval := consistent.offsets[modify] - consistent.offsets[indexPre]
+	interval := consistent.offsets[modify] - consistent.offsets[indexPre] - MINKEYS
 	if interval < 0 {
 		interval += consistent.count
 	}
