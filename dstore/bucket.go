@@ -17,7 +17,7 @@ type HostInBucket struct {
 }
 
 type Bucket struct {
-	Id         int
+	ID         int
 	hostsList  []*HostInBucket
 	consistent *Consistent
 }
@@ -38,7 +38,7 @@ func (b ByName) Less(i, j int) bool {
 
 func newBucket(id int, hosts ...*Host) *Bucket {
 	bucket := new(Bucket)
-	bucket.Id = id
+	bucket.ID = id
 	bucket.hostsList = []*HostInBucket{}
 	for _, host := range hosts {
 		bucket.hostsList = append(bucket.hostsList, newHostInBucket(host))
@@ -107,8 +107,10 @@ func (bucket *Bucket) balance() {
 	fromHost, toHost := bucket.getModify()
 	// TODO
 	if bucket.needBalance(fromHost, toHost) {
-		logger.Errorf("bucket %d BALANCE: from host-%s to host-%s ", bucket.Id, bucket.hostsList[fromHost].host.Addr, bucket.hostsList[toHost].host.Addr)
+		logger.Errorf("bucket %d consistent is %v", bucket.ID, bucket.consistent.offsets)
+		logger.Errorf("bucket %d BALANCE: from host-%s-%d to host-%s-%d ", bucket.ID, bucket.hostsList[fromHost].host.Addr, fromHost, bucket.hostsList[toHost].host.Addr, toHost)
 		bucket.consistent.reBalance(fromHost, toHost, 1)
+		logger.Errorf("bucket %d consistent is %v", bucket.ID, bucket.consistent.offsets)
 	}
 }
 

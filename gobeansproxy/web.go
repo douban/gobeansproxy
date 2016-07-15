@@ -22,6 +22,11 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
+func getBucket(r *http.Request) (bucketID int64, err error) {
+	s := filepath.Base(r.URL.Path)
+	return strconv.ParseInt(s, 16, 16)
+}
+
 func handleWebPanic(w http.ResponseWriter) {
 	r := recover()
 	if r != nil {
@@ -80,6 +85,9 @@ func startWeb() {
 	http.Handle("/", &templateHandler{filename: "templates/stats.html"})
 	http.Handle("/score/", &templateHandler{filename: "templates/score.html"})
 	http.HandleFunc("/score/json", handleScore)
+	http.HandleFunc("/api/responsestats", handleSche)
+	http.HandleFunc("/api/consistent", handleConsistent)
+	http.HandleFunc("/api/bucket/", handleBucket)
 
 	// same as gobeansdb
 	http.HandleFunc("/config/", handleConfig)
@@ -137,6 +145,27 @@ func handleScore(w http.ResponseWriter, r *http.Request) {
 func handleRoute(w http.ResponseWriter, r *http.Request) {
 	defer handleWebPanic(w)
 	handleYaml(w, config.Route)
+}
+
+func handleSche(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
+	responseStats := dstore.GetScheduler().ResponseStats()
+	handleJson(w, responseStats)
+}
+
+func handleConsistent(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
+	consistent := dstore.GetScheduler().Consistent()
+	handleJson(w, consistent)
+}
+
+func handleBucket(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
+	bucketID, err := getBucket(r)
+	if err != nil {
+	}
+	bktInfo := dstore.GetScheduler().GetBucketInfo(bucketID)
+	handleJson(w, bktInfo)
 }
 
 func handleRouteVersion(w http.ResponseWriter, r *http.Request) {

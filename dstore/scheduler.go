@@ -35,6 +35,12 @@ type Scheduler interface {
 	// internal status
 	Stats() map[string]map[string]float64
 
+	ResponseStats() map[string]map[string][QUEUECAP]Response
+
+	Consistent() map[string]map[string]int
+
+	GetBucketInfo(bucketID int64) map[string]map[string]map[string][QUEUECAP]Response
+
 	Close()
 }
 
@@ -270,9 +276,9 @@ func (sch *ManualScheduler) Stats() map[string]map[string]float64 {
 	for _, bucket := range sch.bucketsCon {
 		var bkt string
 		if sch.bucketWidth > 4 {
-			bkt = fmt.Sprintf("%02x", bucket.Id)
+			bkt = fmt.Sprintf("%02x", bucket.ID)
 		} else {
-			bkt = fmt.Sprintf("%x", bucket.Id)
+			bkt = fmt.Sprintf("%x", bucket.ID)
 		}
 		r[bkt] = make(map[string]float64, len(bucket.hostsList))
 		for _, host := range bucket.hostsList {
@@ -282,6 +288,63 @@ func (sch *ManualScheduler) Stats() map[string]map[string]float64 {
 	}
 	logger.Errorf("stats is %v", r)
 
+	return r
+}
+
+func (sch *ManualScheduler) ResponseStats() map[string]map[string][QUEUECAP]Response {
+	//	r := make(map[string]map[string]float64, len(sch.bucketsCon))
+	r := make(map[string]map[string][QUEUECAP]Response, len(sch.bucketsCon))
+
+	for _, bucket := range sch.bucketsCon {
+		var bkt string
+		if sch.bucketWidth > 4 {
+			bkt = fmt.Sprintf("%02x", bucket.ID)
+		} else {
+			bkt = fmt.Sprintf("%x", bucket.ID)
+		}
+		r[bkt] = make(map[string][QUEUECAP]Response, len(bucket.hostsList))
+		for _, host := range bucket.hostsList {
+			r[bkt][host.host.Addr] = host.resTimes.resData
+		}
+
+	}
+	logger.Errorf("response stats is %v", r)
+	return r
+}
+
+func (sch *ManualScheduler) Consistent() map[string]map[string]int {
+	//	r := make(map[string]map[string]float64, len(sch.bucketsCon))
+	r := make(map[string]map[string]int, len(sch.bucketsCon))
+
+	for _, bucket := range sch.bucketsCon {
+		var bkt string
+		if sch.bucketWidth > 4 {
+			bkt = fmt.Sprintf("%02x", bucket.ID)
+		} else {
+			bkt = fmt.Sprintf("%x", bucket.ID)
+		}
+		r[bkt] = make(map[string]int, len(bucket.hostsList))
+		for i, host := range bucket.hostsList {
+			r[bkt][host.host.Addr] = bucket.consistent.offsets[i]
+		}
+
+	}
+	logger.Errorf("consistent is %v", r)
+	return r
+}
+
+func (sch *ManualScheduler) GetBucketInfo(bucketID int64) map[string]map[string]map[string][QUEUECAP]Response {
+	bkt := sch.bucketsCon[bucketID]
+	// addr:score:offset:response
+	r := make(map[string]map[string]map[string][QUEUECAP]Response, len(bkt.hostsList))
+	for i, hostInBucket := range bkt.hostsList {
+		r[hostInBucket.host.Addr] = make(map[string]map[string][QUEUECAP]Response)
+		score := fmt.Sprintf("%f", hostInBucket.score)
+		offset := fmt.Sprintf("%d", bkt.consistent.offsets[i])
+		r[hostInBucket.host.Addr][score] = map[string][QUEUECAP]Response{
+			offset: hostInBucket.resTimes.resData,
+		}
+	}
 	return r
 }
 
