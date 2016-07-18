@@ -64,6 +64,16 @@ func (consistent *Consistent) remove(host int) {
 	consistent.offsets[host] = consistent.offsets[preIndex]
 }
 
+// 获取某一段弧长
+func (consistent *Consistent) getArc(index int) int {
+	indexPre := consistent.getPre(index)
+	arc := consistent.offsets[index] - consistent.offsets[indexPre]
+	if arc < 0 {
+		arc += consistent.count
+	}
+	return arc
+}
+
 func (consistent *Consistent) reBalance(indexFrom, indexTo int, step int) {
 	consistent.Lock()
 	defer consistent.Unlock()

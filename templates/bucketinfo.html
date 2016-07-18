@@ -1,0 +1,42 @@
+{{ define "body" }}
+  <div class="row">
+    <h4>Bucket Info</h4>
+      {{ range $addr, $host:= .bucketinfo}}
+        {{ range $score, $consistent:= $host}}
+          <div class="col-md-4">
+            <table class="table table-bordered sortable">
+            <thead>
+            <tr>
+                <th>Host</th>
+                <th>Score</th>
+                <th>Arc</th>
+            </tr>
+            </thead>
+            <tbody>
+            {{ range $arc, $resstats := $consistent}}
+                <tr class="success">
+                    <td>{{ $addr}}</td>
+                    <td>{{ $score}} </td>
+                    <td>{{ $arc}} </td>
+                </tr>
+                <tr>
+                    <td>StartTime</td>
+                    <td>Count</td>
+                    <td>SumTime</td>
+                </tr>
+
+                {{ range $_, $response := $resstats }}
+                    <tr>
+                        <td> {{ $response.ReqTime.Format "2006-01-02T15:04:05Z07:00" }} </td>
+                        <td> {{ $response.Count }} </td>
+                        <td> {{ $response.Sum }} </td>
+                    </tr>
+                {{ end }}
+            {{ end }}
+        </tbody>
+        </table>
+        </div>
+        {{ end }}
+      {{ end }}
+  </div>
+{{ end }}

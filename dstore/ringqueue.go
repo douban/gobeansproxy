@@ -12,7 +12,7 @@ const QUEUECAP = 60
 
 type Response struct {
 	ReqTime time.Time
-	count   int
+	Count   int
 	Sum     float64
 }
 
@@ -40,12 +40,12 @@ func (q *RingQueue) Push(start time.Time, ResTime float64) error {
 	defer q.Unlock()
 	if start.Sub(q.resData[second].ReqTime) > TIMEINTERVAL {
 		q.resData[second].Sum = ResTime
-		q.resData[second].count = 1
+		q.resData[second].Count = 1
 		q.resData[second].ReqTime = start
 	}
 	q.resData[second].Sum += ResTime
 	q.resData[second].ReqTime = start
-	q.resData[second].count += 1
+	q.resData[second].Count += 1
 
 	return nil
 }
@@ -54,16 +54,16 @@ func (q *RingQueue) PushErr(start time.Time, ResTime float64) error {
 	second := start.Second()
 	q.Lock()
 	defer q.Unlock()
-	if q.errData[second].count > 0 {
+	if q.errData[second].Count > 0 {
 		if start.Sub(q.errData[second].ReqTime) > TIMEINTERVAL {
 			q.errData[second].Sum = ResTime
-			q.errData[second].count = 1
+			q.errData[second].Count = 1
 			q.errData[second].ReqTime = start
 		}
 	}
 	q.errData[second].Sum += ResTime
 	q.errData[second].ReqTime = start
-	q.errData[second].count += 1
+	q.errData[second].Count += 1
 
 	return nil
 }

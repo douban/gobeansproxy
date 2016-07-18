@@ -39,7 +39,7 @@ type Scheduler interface {
 
 	Consistent() map[string]map[string]int
 
-	GetBucketInfo(bucketID int64) map[string]map[string]map[string][QUEUECAP]Response
+	GetBucketInfo(bucketID int64) map[string]map[string]map[string][]Response
 
 	Close()
 }
@@ -197,7 +197,7 @@ func (sch *ManualScheduler) Feedback(host *Host, key string, startTime time.Time
 }
 
 func (sch *ManualScheduler) FeedbackTime(host *Host, key string, startTime time.Time, timeUsed time.Duration) {
-	n := timeUsed.Nanoseconds() / 1000
+	n := timeUsed.Nanoseconds() / 1000 // Nanoseconds to Microsecond
 	sch.Feedback(host, key, startTime, float64(n))
 }
 
@@ -219,10 +219,11 @@ func (sch *ManualScheduler) feedback(hostname string, bucketNum int, startTime t
 	if index < 0 {
 		return
 	} else {
-		if adjust > 0 {
-			bucket.addResTime(hostname, startTime, adjust)
-		} else {
+		if adjust < 0 {
+			logger.Errorf("add error for host %s startTime is %v and response time is %f", hostname, startTime, adjust)
 			bucket.addConErr(hostname, startTime, adjust)
+		} else {
+			bucket.addResTime(hostname, startTime, adjust)
 		}
 	}
 }
@@ -333,16 +334,16 @@ func (sch *ManualScheduler) Consistent() map[string]map[string]int {
 	return r
 }
 
-func (sch *ManualScheduler) GetBucketInfo(bucketID int64) map[string]map[string]map[string][QUEUECAP]Response {
+func (sch *ManualScheduler) GetBucketInfo(bucketID int64) map[string]map[string]map[string][]Response {
 	bkt := sch.bucketsCon[bucketID]
 	// addr:score:offset:response
-	r := make(map[string]map[string]map[string][QUEUECAP]Response, len(bkt.hostsList))
+	r := make(map[string]map[string]map[string][]Response, len(bkt.hostsList))
 	for i, hostInBucket := range bkt.hostsList {
-		r[hostInBucket.host.Addr] = make(map[string]map[string][QUEUECAP]Response)
+		r[hostInBucket.host.Addr] = make(map[string]map[string][]Response)
 		score := fmt.Sprintf("%f", hostInBucket.score)
-		offset := fmt.Sprintf("%d", bkt.consistent.offsets[i])
-		r[hostInBucket.host.Addr][score] = map[string][QUEUECAP]Response{
-			offset: hostInBucket.resTimes.resData,
+		offset := fmt.Sprintf("%d", bkt.consistent.getArc(i))
+		r[hostInBucket.host.Addr][score] = map[string][]Response{
+			offset: hostInBucket.resTimes.GetResponses(proxyConf.ResTimeSeconds),
 		}
 	}
 	return r

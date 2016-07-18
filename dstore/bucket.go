@@ -77,7 +77,7 @@ func (bucket *Bucket) ReBalance() {
 }
 
 func (bucket *Bucket) reScore() {
-	for i, host := range bucket.hostsList {
+	for _, host := range bucket.hostsList {
 		var Sum float64
 		var count int
 		// while the host is down/
@@ -90,7 +90,7 @@ func (bucket *Bucket) reScore() {
 			// use responseTime and responseCount
 			for _, response := range res {
 				Sum += response.Sum
-				count += response.count
+				count += response.Count
 			}
 			if count > 0 {
 				host.score = Sum / float64(count)
@@ -99,7 +99,6 @@ func (bucket *Bucket) reScore() {
 			}
 			logger.Errorf("host %s got score %f", host.host.Addr, host.score)
 		}
-		bucket.hostsList[i] = host
 	}
 }
 
@@ -155,7 +154,7 @@ func (bucket *Bucket) hostIsAlive(addr string) bool {
 	errs := host.resTimes.GetErrors(proxyConf.ErrorSeconds)
 	count := 0
 	for _, err := range errs {
-		count += err.count
+		count += err.Count
 	}
 	if count > proxyConf.MaxConnectErrors {
 		return false
@@ -167,15 +166,19 @@ func (bucket *Bucket) hostIsAlive(addr string) bool {
 func (bucket *Bucket) aliveHost(addr string) {
 	// TODO 清除历史上的 Errors
 	// 还需要清除 response time
+	// TODO Lock
 	_, hostBucket := bucket.getHostByAddr(addr)
-	hostBucket.status = true
+	if hostBucket.status == false {
+		hostBucket.status = true
+		hostBucket.resTimes.clear()
+	}
 }
 
 func (bucket *Bucket) addResTime(host string, startTime time.Time, record float64) {
 	// TODO 每次添加都会排除掉
 	_, hostBucket := bucket.getHostByAddr(host)
 	if record > 0 {
-		hostBucket.status = true
+		bucket.aliveHost(host)
 	}
 	hostBucket.resTimes.Push(startTime, record)
 }
@@ -186,6 +189,7 @@ func (bucket *Bucket) addConErr(host string, startTime time.Time, error float64)
 	hostisalive := bucket.hostIsAlive(host)
 	if !hostisalive {
 		bucket.downHost(host)
+		logger.Errorf("host %s is removed from consistent", host)
 	}
 }
 

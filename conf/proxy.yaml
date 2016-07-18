@@ -28,5 +28,5 @@ dstore:
   response_time_seconds: 10
   error_seconds: 10
   max_connect_errors: 3
-  score_deviation: 10
+  score_deviation: 10000
   item_size_stats: 4096

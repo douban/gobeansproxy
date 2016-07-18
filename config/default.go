@@ -28,7 +28,7 @@ var (
 		ResTimeSeconds:      10,
 		ErrorSeconds:        10,
 		MaxConnectErrors:    3,
-		ScoreDeviation:      10,
+		ScoreDeviation:      10000, // 10000 Microseconds -> 10 Millisecond
 		ItemSizeStats:       4096,
 	}
 )
