@@ -105,18 +105,12 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 		start := time.Now()
 		r, er := host.GetMulti(keys)
 		if er == nil {
-			end := time.Now()
 			suc += 1
 			if r != nil {
 				targets = append(targets, host.Addr)
 			}
 
 			for k, v := range r {
-				if v != nil {
-					if v.Cap < proxyConf.ItemSizeStats {
-						c.sched.FeedbackTime(host, keys[0], start, end.Sub(start))
-					}
-				}
 				rs[k] = v
 			}
 			if len(rs) == numKeys {

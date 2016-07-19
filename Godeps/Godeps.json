@@ -24,23 +24,23 @@
 		},
 		{
 			"ImportPath": "github.intra.douban.com/coresys/gobeansdb/cmem",
-			"Rev": "03d991be2eb2fd3dacf9212faf27d0289f8b717b"
+			"Rev": "4fbc01b1b03ede295b9b4dc33c280e3879e5aae5"
 		},
 		{
 			"ImportPath": "github.intra.douban.com/coresys/gobeansdb/config",
-			"Rev": "03d991be2eb2fd3dacf9212faf27d0289f8b717b"
+			"Rev": "4fbc01b1b03ede295b9b4dc33c280e3879e5aae5"
 		},
 		{
 			"ImportPath": "github.intra.douban.com/coresys/gobeansdb/loghub",
-			"Rev": "03d991be2eb2fd3dacf9212faf27d0289f8b717b"
+			"Rev": "4fbc01b1b03ede295b9b4dc33c280e3879e5aae5"
 		},
 		{
 			"ImportPath": "github.intra.douban.com/coresys/gobeansdb/memcache",
-			"Rev": "03d991be2eb2fd3dacf9212faf27d0289f8b717b"
+			"Rev": "4fbc01b1b03ede295b9b4dc33c280e3879e5aae5"
 		},
 		{
 			"ImportPath": "github.intra.douban.com/coresys/gobeansdb/utils",
-			"Rev": "03d991be2eb2fd3dacf9212faf27d0289f8b717b"
+			"Rev": "4fbc01b1b03ede295b9b4dc33c280e3879e5aae5"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",

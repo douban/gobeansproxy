@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const TIMEINTERVAL = 30 // proxy 链接 后端 超时时间 为 3 秒，TIMEI
+const TIMEINTERVAL = 30000000000 // proxy 链接 后端 超时时间 为 3 秒，清空 30s 之前的数据，30 * 1000 * 1000 * 1000
 
 const QUEUECAP = 60
 

@@ -97,7 +97,6 @@ func (bucket *Bucket) reScore() {
 			} else {
 				host.score = 0
 			}
-			logger.Errorf("host %s got score %f", host.host.Addr, host.score)
 		}
 	}
 }

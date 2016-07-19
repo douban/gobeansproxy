@@ -62,8 +62,12 @@ type templateHandler struct {
 }
 
 func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// add divide func
+	fm := template.FuncMap{"divide": func(sumTime float64, count int) int {
+		return int(sumTime) / count
+	}}
 	t.once.Do(func() {
-		t.templ = template.Must(template.New("base.html").Option("missingkey=error").ParseFiles(
+		t.templ = template.Must(template.New("base.html").Funcs(fm).Option("missingkey=error").ParseFiles(
 			filepath.Join(proxyConf.StaticDir, t.filename),
 			filepath.Join(proxyConf.StaticDir, "templates/base.html")))
 	})
@@ -74,7 +78,6 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if t.filename == "templates/bucketinfo.html" {
-
 		bucketID, err := getBucket(r)
 		if err != nil {
 		}
