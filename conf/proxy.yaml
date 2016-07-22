@@ -30,3 +30,4 @@ dstore:
   max_connect_errors: 3
   score_deviation: 10000
   item_size_stats: 4096
+  response_time_min: 4000

@@ -37,6 +37,7 @@ type DStoreConfig struct {
 	MaxConnectErrors    int     `yaml:"max_connect_errors,omitempty"`
 	ScoreDeviation      float64 `yaml:"score_deviation,omitempty"`
 	ItemSizeStats       int     `yaml:"item_size_stats,omitempty"`
+	ResponseTimeMin     float64 `yaml:"response_time_min,omitempty"`
 }
 
 func (c *ProxyConfig) InitDefault() {

@@ -85,6 +85,13 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"bucketinfo": dstore.GetScheduler().GetBucketInfo(bucketID),
 		}
 	}
+
+	if t.filename == "templates/buckets.html" {
+		data = map[string]interface{}{
+			"buckets": dstore.GetScheduler().Consistent(),
+		}
+
+	}
 	e := t.templ.Execute(w, data)
 	if e != nil {
 		logger.Errorf("ServerHTTP filename:%s, error: %s", t.filename, e.Error())
@@ -97,6 +104,7 @@ func startWeb() {
 	http.Handle("/", &templateHandler{filename: "templates/stats.html"})
 	http.Handle("/score/", &templateHandler{filename: "templates/score.html"})
 	http.Handle("/bucketinfo/", &templateHandler{filename: "templates/bucketinfo.html"})
+	http.Handle("/buckets", &templateHandler{filename: "templates/buckets.html"})
 	http.HandleFunc("/score/json", handleScore)
 	http.HandleFunc("/api/responsestats", handleSche)
 	http.HandleFunc("/api/consistent", handleConsistent)

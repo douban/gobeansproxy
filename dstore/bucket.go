@@ -93,7 +93,12 @@ func (bucket *Bucket) reScore() {
 				count += response.Count
 			}
 			if count > 0 {
-				host.score = Sum / float64(count)
+				score := Sum / float64(count)
+				if score < proxyConf.ResponseTimeMin {
+					host.score = proxyConf.ResponseTimeMin
+				} else {
+					host.score = Sum / float64(count)
+				}
 			} else {
 				host.score = 0
 			}

@@ -82,7 +82,9 @@ proxy_conf_tmpl = {
         'response_time_seconds': 10,
         'error_seconds': 10,
         'max_connect_errors': 3,
-        'score_deviation': 10
+        'score_deviation': 10,
+        'item_size_stats': 4096,
+        'response_time_min': 4000
     },
     'mc': {
         'body_big_str': '5M',
