@@ -326,7 +326,7 @@ func (sch *ManualScheduler) Consistent() map[string]map[string]int {
 		}
 		r[bkt] = make(map[string]int, len(bucket.hostsList))
 		for i, host := range bucket.hostsList {
-			r[bkt][host.host.Addr] = bucket.consistent.offsets[i]
+			r[bkt][host.host.Addr] = bucket.consistent.getArc(i)
 		}
 
 	}
