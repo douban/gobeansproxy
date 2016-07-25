@@ -11,7 +11,7 @@ import (
 func TestConsistent(t *testing.T) {
 	assert := assert.New(t)
 
-	hashs := NewConsistent(100, 3)
+	hashs := NewPartition(100, 3)
 
 	// 计数器
 	counter := make(map[int]int)
@@ -33,7 +33,7 @@ func TestConsistent(t *testing.T) {
 // 阶段故障
 func TestConsistentRemove(t *testing.T) {
 	assert := assert.New(t)
-	hashs := NewConsistent(100, 3)
+	hashs := NewPartition(100, 3)
 	hashs.remove(0)
 	loop := 1000000
 	for i := 0; i < loop; i++ {
@@ -47,7 +47,7 @@ func TestConsistentRemove(t *testing.T) {
 
 func TestConsistentBalance(t *testing.T) {
 	assert := assert.New(t)
-	hashs := NewConsistent(100, 3)
+	hashs := NewPartition(100, 3)
 	hashs.reBalance(0, 2, 100)
 	assert.Equal(hashs.offsets[2], 99)
 }
@@ -55,9 +55,9 @@ func TestConsistentBalance(t *testing.T) {
 func TestConsistentMulti(t *testing.T) {
 	assert := assert.New(t)
 
-	hashs1 := NewConsistent(100, 3)
+	hashs1 := NewPartition(100, 3)
 
-	hashs2 := NewConsistent(100, 3)
+	hashs2 := NewPartition(100, 3)
 
 	// 多次访问结果一致。
 	s1 := hashs1.offsetGet("abc")
@@ -72,7 +72,7 @@ func TestConsistentMulti(t *testing.T) {
 
 // 哈希函数性能。
 func BenchmarkConsistentHash(b *testing.B) {
-	h := NewConsistent(100, 3)
+	h := NewPartition(100, 3)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

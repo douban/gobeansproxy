@@ -23,8 +23,8 @@ var (
 // Scheduler: route request to nodes
 type Scheduler interface {
 	// feedback for auto routing
-	Feedback(host *Host, key string, startTime time.Time, adjust float64)
-	FeedbackTime(host *Host, key string, startTime time.Time, timeUsed time.Duration)
+	FeedbackError(host *Host, key string, startTime time.Time, errorCode float64)
+	FeedbackLatency(host *Host, key string, startTime time.Time, timeUsed time.Duration)
 
 	// route a key to hosts
 	GetHostsByKey(key string) (hosts []*Host)
@@ -35,10 +35,13 @@ type Scheduler interface {
 	// internal status
 	Stats() map[string]map[string]float64
 
-	ResponseStats() map[string]map[string][QUEUECAP]Response
+	// get latencies of hosts in the bucket
+	LatenciesStats() map[string]map[string][QUEUECAP]Response
 
-	Consistent() map[string]map[string]int
+	// get percentage of hosts in the bucket
+	Partition() map[string]map[string]int
 
+	// return average latency  and arc(percentage)
 	GetBucketInfo(bucketID int64) map[string]map[string]map[string][]Response
 
 	Close()
@@ -80,7 +83,6 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 	sch.hosts = make([]*Host, len(route.Servers))
 	sch.bucketsCon = make([]*Bucket, route.NumBucket)
 	sch.backupsCon = make([]*Bucket, route.NumBucket)
-	// sch.stats = make([][]float64, route.NumBucket)
 
 	idx := 0
 
@@ -115,10 +117,6 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 		sch.backupsCon[bucketNum] = newBucket(bucketNum, hosts...)
 	}
 
-	// set sch.stats according to sch.buckets
-	// for b := 0; b < route.NumBucket; b++ {
-	// 	sch.stats[b] = make([]float64, len(sch.hosts))
-	// }
 	sch.hashMethod = dbutil.Fnv1a
 	sch.bucketWidth = calBitWidth(route.NumBucket)
 
@@ -128,7 +126,7 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 	go func() {
 		for {
 			if sch.quit {
-				logger.Infof("close tryReward goroutine")
+				logger.Infof("close balance goroutine")
 				close(sch.feedChan)
 				break
 			}
@@ -185,18 +183,22 @@ func (sch *ManualScheduler) GetHostsByKey(key string) (hosts []*Host) {
 }
 
 type Feedback struct {
-	hostname  string
+	addr      string
 	bucket    int
-	adjust    float64
+	data      float64 //latency or errorCode
 	startTime time.Time
 }
 
-func (sch *ManualScheduler) Feedback(host *Host, key string, startTime time.Time, adjust float64) {
+func (sch *ManualScheduler) Feedback(host *Host, key string, startTime time.Time, data float64) {
 	bucket := getBucketByKey(sch.hashMethod, sch.bucketWidth, key)
-	sch.feedChan <- &Feedback{hostname: host.Addr, bucket: bucket, adjust: adjust, startTime: startTime}
+	sch.feedChan <- &Feedback{addr: host.Addr, bucket: bucket, data: data, startTime: startTime}
 }
 
-func (sch *ManualScheduler) FeedbackTime(host *Host, key string, startTime time.Time, timeUsed time.Duration) {
+func (sch *ManualScheduler) FeedbackError(host *Host, key string, startTime time.Time, errorCode float64) {
+	sch.Feedback(host, key, startTime, errorData)
+}
+
+func (sch *ManualScheduler) FeedbackLatency(host *Host, key string, startTime time.Time, timeUsed time.Duration) {
 	n := timeUsed.Nanoseconds() / 1000 // Nanoseconds to Microsecond
 	sch.Feedback(host, key, startTime, float64(n))
 }
@@ -209,21 +211,21 @@ func (sch *ManualScheduler) procFeedback() {
 			// channel was closed
 			break
 		}
-		sch.feedback(fb.hostname, fb.bucket, fb.startTime, fb.adjust)
+		sch.feedback(fb.addr, fb.bucket, fb.startTime, fb.data)
 	}
 }
 
-func (sch *ManualScheduler) feedback(hostname string, bucketNum int, startTime time.Time, adjust float64) {
+func (sch *ManualScheduler) feedback(addr string, bucketNum int, startTime time.Time, data float64) {
 	bucket := sch.bucketsCon[bucketNum]
-	index, _ := bucket.getHostByAddr(hostname)
+	index, _ := bucket.getHostByAddr(addr)
 	if index < 0 {
+		logger.Errorf("Got nothing by addr %s", addr)
 		return
 	} else {
-		if adjust < 0 {
-			logger.Errorf("add error for host %s startTime is %v and response time is %f", hostname, startTime, adjust)
-			bucket.addConErr(hostname, startTime, adjust)
+		if data < 0 {
+			bucket.addConErr(addr, startTime, data)
 		} else {
-			bucket.addResTime(hostname, startTime, adjust)
+			bucket.addLatency(addr, startTime, data)
 		}
 	}
 }
@@ -245,17 +247,12 @@ func (sch *ManualScheduler) checkFailsForBucket(bucket *Bucket) {
 
 	hosts := bucket.hostsList
 	for _, hostBucket := range hosts {
-		//		start := time.Now()
 		if item, err := hostBucket.host.Get("@"); err == nil {
 			item.Free()
-			bucket.aliveHost(hostBucket.host.Addr)
-
-			//		timeUsed := time.Now().Sub(start)
-			//			n := timeUsed.Nanoseconds() / 1000 // to Microsecond
-			//			sch.feedChan <- &Feedback{hostname: hostBucket.host.Addr, bucket: bucket, adjust: float64(n), startTime: start}
+			bucket.riseHost(hostBucket.host.Addr)
 		} else {
 			logger.Infof(
-				"beansdb server %s in Bucket %X's second node Down while try_reward, err is %s",
+				"beansdb server %s in Bucket %X's Down while check fails , err is %s",
 				hostBucket.host.Addr, bucket, err)
 		}
 	}
@@ -287,13 +284,10 @@ func (sch *ManualScheduler) Stats() map[string]map[string]float64 {
 		}
 
 	}
-	logger.Errorf("stats is %v", r)
-
 	return r
 }
 
-func (sch *ManualScheduler) ResponseStats() map[string]map[string][QUEUECAP]Response {
-	//	r := make(map[string]map[string]float64, len(sch.bucketsCon))
+func (sch *ManualScheduler) LatenciesStats() map[string]map[string][QUEUECAP]Response {
 	r := make(map[string]map[string][QUEUECAP]Response, len(sch.bucketsCon))
 
 	for _, bucket := range sch.bucketsCon {
@@ -305,16 +299,14 @@ func (sch *ManualScheduler) ResponseStats() map[string]map[string][QUEUECAP]Resp
 		}
 		r[bkt] = make(map[string][QUEUECAP]Response, len(bucket.hostsList))
 		for _, host := range bucket.hostsList {
-			r[bkt][host.host.Addr] = host.resTimes.resData
+			r[bkt][host.host.Addr] = *host.lantency.resData
 		}
 
 	}
-	logger.Errorf("response stats is %v", r)
 	return r
 }
 
-func (sch *ManualScheduler) Consistent() map[string]map[string]int {
-	//	r := make(map[string]map[string]float64, len(sch.bucketsCon))
+func (sch *ManualScheduler) Partition() map[string]map[string]int {
 	r := make(map[string]map[string]int, len(sch.bucketsCon))
 
 	for _, bucket := range sch.bucketsCon {
@@ -326,24 +318,23 @@ func (sch *ManualScheduler) Consistent() map[string]map[string]int {
 		}
 		r[bkt] = make(map[string]int, len(bucket.hostsList))
 		for i, host := range bucket.hostsList {
-			r[bkt][host.host.Addr] = bucket.consistent.getArc(i)
+			r[bkt][host.host.Addr] = bucket.partition.getArc(i)
 		}
 
 	}
-	logger.Errorf("consistent is %v", r)
 	return r
 }
 
+// return addr:score:offset:response
 func (sch *ManualScheduler) GetBucketInfo(bucketID int64) map[string]map[string]map[string][]Response {
 	bkt := sch.bucketsCon[bucketID]
-	// addr:score:offset:response
 	r := make(map[string]map[string]map[string][]Response, len(bkt.hostsList))
 	for i, hostInBucket := range bkt.hostsList {
 		r[hostInBucket.host.Addr] = make(map[string]map[string][]Response)
 		score := fmt.Sprintf("%f", hostInBucket.score)
-		offset := fmt.Sprintf("%d", bkt.consistent.getArc(i))
+		offset := fmt.Sprintf("%d", bkt.partition.getArc(i))
 		r[hostInBucket.host.Addr][score] = map[string][]Response{
-			offset: hostInBucket.resTimes.GetResponses(proxyConf.ResTimeSeconds),
+			offset: hostInBucket.lantency.Get(proxyConf.ResTimeSeconds, latencyData),
 		}
 	}
 	return r

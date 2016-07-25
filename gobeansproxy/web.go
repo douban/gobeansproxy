@@ -88,7 +88,7 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if t.filename == "templates/buckets.html" {
 		data = map[string]interface{}{
-			"buckets": dstore.GetScheduler().Consistent(),
+			"buckets": dstore.GetScheduler().Partition(),
 		}
 
 	}
@@ -106,8 +106,8 @@ func startWeb() {
 	http.Handle("/bucketinfo/", &templateHandler{filename: "templates/bucketinfo.html"})
 	http.Handle("/buckets", &templateHandler{filename: "templates/buckets.html"})
 	http.HandleFunc("/score/json", handleScore)
-	http.HandleFunc("/api/responsestats", handleSche)
-	http.HandleFunc("/api/consistent", handleConsistent)
+	http.HandleFunc("/api/response_stats", handleSche)
+	http.HandleFunc("/api/partition", handlePartition)
 	http.HandleFunc("/api/bucket/", handleBucket)
 
 	// same as gobeansdb
@@ -170,14 +170,14 @@ func handleRoute(w http.ResponseWriter, r *http.Request) {
 
 func handleSche(w http.ResponseWriter, r *http.Request) {
 	defer handleWebPanic(w)
-	responseStats := dstore.GetScheduler().ResponseStats()
+	responseStats := dstore.GetScheduler().LatenciesStats()
 	handleJson(w, responseStats)
 }
 
-func handleConsistent(w http.ResponseWriter, r *http.Request) {
+func handlePartition(w http.ResponseWriter, r *http.Request) {
 	defer handleWebPanic(w)
-	consistent := dstore.GetScheduler().Consistent()
-	handleJson(w, consistent)
+	partition := dstore.GetScheduler().Partition()
+	handleJson(w, partition)
 }
 
 func handleBucket(w http.ResponseWriter, r *http.Request) {

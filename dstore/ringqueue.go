@@ -6,9 +6,15 @@ import (
 	"time"
 )
 
-const TIMEINTERVAL = 30000000000 // proxy 链接 后端 超时时间 为 3 秒，清空 30s 之前的数据，30 * 1000 * 1000 * 1000
+const (
+	TIMEINTERVAL = 30 * 1000 * 1000 * 1000 // proxy 链接 后端 超时时间 为 3 秒，清空 30s 之前的数据，30 * 1000 * 1000 * 1000
+	QUEUECAP     = 60
+)
 
-const QUEUECAP = 60
+const (
+	latencyData = iota
+	errorData
+)
 
 type Response struct {
 	ReqTime time.Time
@@ -17,8 +23,8 @@ type Response struct {
 }
 
 type RingQueue struct {
-	resData [QUEUECAP]Response
-	errData [QUEUECAP]Response
+	resData *[QUEUECAP]Response
+	errData *[QUEUECAP]Response
 	sync.RWMutex
 }
 
@@ -29,70 +35,54 @@ var (
 
 func NewRingQueue() *RingQueue {
 	return &RingQueue{
-		resData: [QUEUECAP]Response{},
-		errData: [QUEUECAP]Response{},
+		resData: &[QUEUECAP]Response{},
+		errData: &[QUEUECAP]Response{},
 	}
 }
 
-func (q *RingQueue) Push(start time.Time, ResTime float64) error {
+func (q *RingQueue) Push(start time.Time, ResTime float64, dataType int) error {
 	second := start.Second()
+	var data *[QUEUECAP]Response
+	switch dataType {
+	case latencyData:
+		data = q.resData
+	case errorData:
+		data = q.errData
+	}
+
+	// TODO errData/ resData 锁分开:
 	q.Lock()
 	defer q.Unlock()
-	if start.Sub(q.resData[second].ReqTime) > TIMEINTERVAL {
-		q.resData[second].Sum = ResTime
-		q.resData[second].Count = 1
-		q.resData[second].ReqTime = start
+	if start.Sub(data[second].ReqTime) > TIMEINTERVAL {
+		data[second].Sum = ResTime
+		data[second].Count = 1
+		data[second].ReqTime = start
 	}
-	q.resData[second].Sum += ResTime
-	q.resData[second].ReqTime = start
-	q.resData[second].Count += 1
+	data[second].Sum += ResTime
+	data[second].ReqTime = start
+	data[second].Count++
 
 	return nil
 }
 
-func (q *RingQueue) PushErr(start time.Time, ResTime float64) error {
-	second := start.Second()
-	q.Lock()
-	defer q.Unlock()
-	if q.errData[second].Count > 0 {
-		if start.Sub(q.errData[second].ReqTime) > TIMEINTERVAL {
-			q.errData[second].Sum = ResTime
-			q.errData[second].Count = 1
-			q.errData[second].ReqTime = start
-		}
-	}
-	q.errData[second].Sum += ResTime
-	q.errData[second].ReqTime = start
-	q.errData[second].Count += 1
-
-	return nil
-}
-
-// get responses in last num seconds
-func (q *RingQueue) GetResponses(num int) (responses []Response) {
-	q.RLock()
-	defer q.RUnlock()
+func (q *RingQueue) Get(num, dataType int) (responses []Response) {
 	now := time.Now()
 	second := now.Second()
 	offset := second - num
+
+	var data *[QUEUECAP]Response
+	switch dataType {
+	case latencyData:
+		data = q.resData
+	case errorData:
+		data = q.errData
+	}
+	q.RLock()
+	defer q.RUnlock()
 	if offset > 0 {
-		return q.resData[offset:second]
+		return data[offset:second]
 	} else {
-		return append(q.resData[len(q.resData)+offset:], q.resData[0:second]...)
-	}
-}
-
-// get errors in last num seconds
-func (q *RingQueue) GetErrors(num int) (responses []Response) {
-	q.RLock()
-	defer q.RUnlock()
-	now := time.Now()
-	second := now.Second()
-	offset := second - num
-	if offset < 0 {
-		return append(q.errData[len(q.errData)+offset:], q.errData[0:second]...)
-	} else {
-		return q.errData[offset:second]
+		return append(data[len(q.resData)+offset:], data[0:second]...)
 	}
 }
 

@@ -11,92 +11,92 @@ const (
 )
 
 // 一致性哈希变种
-type Consistent struct {
+type Partition struct {
 	sync.RWMutex
 
 	count   int
 	offsets []int
 }
 
-/* --- Consistent -------------------------------------------------------------- */
-func NewConsistent(count int, nodesNum int) *Consistent {
-	consistent := &Consistent{
+/* --- Partition -------------------------------------------------------------- */
+func NewPartition(count int, nodesNum int) *Partition {
+	partition := &Partition{
 		count:   count,
 		offsets: []int{},
 	}
-	lenNodes := consistent.count / nodesNum
+	lenNodes := partition.count / nodesNum
 
 	for i := 0; i < nodesNum; i++ {
-		consistent.offsets = append(consistent.offsets, lenNodes*i)
+		partition.offsets = append(partition.offsets, lenNodes*i)
 	}
-	return consistent
+	return partition
 }
 
 // 哈希函数。
-func (consistent *Consistent) hash(key string) int {
+func (partition *Partition) hash(key string) int {
 	hash := fnv.New32a()
 	hash.Write([]byte(key))
-	return int(hash.Sum32()) % consistent.count
+	return int(hash.Sum32()) % partition.count
 }
 
-func (consistent *Consistent) getPre(index int) (pre int) {
+func (partition *Partition) getPre(index int) (pre int) {
 	return (index - 1 + 3) % 3
 }
 
-func (consistent *Consistent) getNext(index int) (next int) {
+func (partition *Partition) getNext(index int) (next int) {
 	return (index + 1 + 3) % 3
 }
 
-func (consistent *Consistent) remove(host int) {
-	consistent.Lock()
-	defer consistent.Unlock()
+func (partition *Partition) remove(host int) {
+	partition.Lock()
+	defer partition.Unlock()
 	//TODO 只允许有三个节点
-	preIndex := consistent.getPre(host)        //(host - 1 + 3) % 3
-	offsetsPre := consistent.offsets[preIndex] //consistent.offsets[preIndex]
+	preIndex := partition.getPre(host)        //(host - 1 + 3) % 3
+	offsetsPre := partition.offsets[preIndex] //partition.offsets[preIndex]
 	offsetsCount := 0
-	if offsetsPre > consistent.offsets[host] {
-		offsetsCount = (consistent.offsets[host] + consistent.count - offsetsPre)
+	if offsetsPre > partition.offsets[host] {
+		offsetsCount = (partition.offsets[host] + partition.count - offsetsPre)
 	} else {
-		offsetsCount = (consistent.offsets[host] - offsetsPre)
+		offsetsCount = (partition.offsets[host] - offsetsPre)
 	}
-	prevalue := consistent.offsets[preIndex] + (offsetsCount / 2)
-	consistent.offsets[preIndex] = consistent.clearOffset(prevalue)
-	consistent.offsets[host] = consistent.offsets[preIndex]
+	prevalue := partition.offsets[preIndex] + (offsetsCount / 2)
+	partition.offsets[preIndex] = partition.clearOffset(prevalue)
+	partition.offsets[host] = partition.offsets[preIndex]
 }
 
 // 获取某一段弧长
-func (consistent *Consistent) getArc(index int) int {
-	indexPre := consistent.getPre(index)
-	arc := consistent.offsets[index] - consistent.offsets[indexPre]
+func (partition *Partition) getArc(index int) int {
+	indexPre := partition.getPre(index)
+	arc := partition.offsets[index] - partition.offsets[indexPre]
 	if arc < 0 {
-		arc += consistent.count
+		arc += partition.count
 	}
 	return arc
 }
 
-func (consistent *Consistent) reBalance(indexFrom, indexTo int, step int) {
-	consistent.Lock()
-	defer consistent.Unlock()
+func (partition *Partition) reBalance(indexFrom, indexTo int, step int) {
+	partition.Lock()
+	defer partition.Unlock()
 	// from 节点的下一个节点
-	fromNext := consistent.getNext(indexFrom) //(indexFrom + 1 + 3) % 3
+	fromNext := partition.getNext(indexFrom) //(indexFrom + 1 + 3) % 3
 
 	if indexTo == fromNext {
-		fromPre := consistent.getPre(indexFrom) //(indexFrom - 1 + 3) % 3
-		step = consistent.clearStep(indexFrom, fromPre, step)
-		value := consistent.offsets[indexFrom] - step
-		consistent.offsets[indexFrom] = consistent.clearOffset(value)
+		fromPre := partition.getPre(indexFrom) //(indexFrom - 1 + 3) % 3
+		step = partition.clearStep(indexFrom, fromPre, step)
+		value := partition.offsets[indexFrom] - step
+		partition.offsets[indexFrom] = partition.clearOffset(value)
 	} else {
-		toNext := consistent.getNext(indexTo) //(indexTo + 1 + 3) % 3
-		step = consistent.clearStep(toNext, indexTo, step)
-		value := consistent.offsets[indexTo] + step
-		consistent.offsets[indexTo] = consistent.clearOffset(value)
+		toNext := partition.getNext(indexTo) //(indexTo + 1 + 3) % 3
+		step = partition.clearStep(toNext, indexTo, step)
+		value := partition.offsets[indexTo] + step
+		partition.offsets[indexTo] = partition.clearOffset(value)
 	}
 }
 
-func (consistent *Consistent) clearStep(modify, indexPre, step int) int {
-	interval := consistent.offsets[modify] - consistent.offsets[indexPre] - MINKEYS
+func (partition *Partition) clearStep(modify, indexPre, step int) int {
+	interval := partition.offsets[modify] - partition.offsets[indexPre] - MINKEYS
 	if interval < 0 {
-		interval += consistent.count
+		interval += partition.count
 	}
 	if step > interval {
 		step = interval
@@ -104,19 +104,19 @@ func (consistent *Consistent) clearStep(modify, indexPre, step int) int {
 	return step
 }
 
-func (consistent *Consistent) clearOffset(offset int) int {
+func (partition *Partition) clearOffset(offset int) int {
 	if offset < 0 {
-		offset += consistent.count
-	} else if offset > consistent.count {
-		offset = offset % consistent.count
+		offset += partition.count
+	} else if offset > partition.count {
+		offset = offset % partition.count
 	}
 	return offset
 }
 
 // 获取匹配主键。
-func (consistent *Consistent) offsetGet(key string) int {
-	consistent.RLock()
-	defer consistent.RUnlock()
+func (partition *Partition) offsetGet(key string) int {
+	partition.RLock()
+	defer partition.RUnlock()
 
 	//       A    0
 	//            |
@@ -134,17 +134,17 @@ func (consistent *Consistent) offsetGet(key string) int {
 	//  B: 0<-B->1
 	//  C: 1<-C->2
 
-	index := consistent.hash(key)
+	index := partition.hash(key)
 	// like offset[0] == 98, offset[1] == 32, offset [2] ==66
 	// [98, 32, 66]
 	// [98, 32, 98]
 	// [98, 32, 32]
-	if consistent.offsets[0] > consistent.offsets[1] {
-		if index < consistent.offsets[1] {
+	if partition.offsets[0] > partition.offsets[1] {
+		if index < partition.offsets[1] {
 			return 1
-		} else if index < consistent.offsets[2] {
+		} else if index < partition.offsets[2] {
 			return 2
-		} else if index < consistent.offsets[0] {
+		} else if index < partition.offsets[0] {
 			return 0
 		} else {
 			return 1
@@ -154,12 +154,12 @@ func (consistent *Consistent) offsetGet(key string) int {
 		// [23, 88, 1]
 		// [32, 88 ,32]
 		// [88, 88, 32]
-	} else if consistent.offsets[2] < consistent.offsets[1] {
-		if index < consistent.offsets[2] {
+	} else if partition.offsets[2] < partition.offsets[1] {
+		if index < partition.offsets[2] {
 			return 2
-		} else if index < consistent.offsets[0] {
+		} else if index < partition.offsets[0] {
 			return 0
-		} else if index < consistent.offsets[1] {
+		} else if index < partition.offsets[1] {
 			return 1
 		} else {
 			return 2
@@ -170,7 +170,7 @@ func (consistent *Consistent) offsetGet(key string) int {
 		// [3, 3, 67]
 		// [3, 67, 67]
 	} else {
-		for i, value := range consistent.offsets {
+		for i, value := range partition.offsets {
 			if index < value {
 				return i
 			}

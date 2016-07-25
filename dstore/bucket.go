@@ -11,15 +11,14 @@ const CONSISTENTLEN = 100
 type HostInBucket struct {
 	status   bool
 	score    float64
-	oldScore float64
 	host     *Host
-	resTimes *RingQueue
+	lantency *RingQueue
 }
 
 type Bucket struct {
-	ID         int
-	hostsList  []*HostInBucket
-	consistent *Consistent
+	ID        int
+	hostsList []*HostInBucket
+	partition *Partition
 }
 
 type ByName []*HostInBucket
@@ -44,7 +43,7 @@ func newBucket(id int, hosts ...*Host) *Bucket {
 		bucket.hostsList = append(bucket.hostsList, newHostInBucket(host))
 	}
 	sort.Sort(ByName(bucket.hostsList))
-	bucket.consistent = NewConsistent(CONSISTENTLEN, len(bucket.hostsList))
+	bucket.partition = NewPartition(CONSISTENTLEN, len(bucket.hostsList))
 	return bucket
 }
 
@@ -52,15 +51,14 @@ func newHostInBucket(host *Host) *HostInBucket {
 	return &HostInBucket{
 		status:   true,
 		score:    0,
-		oldScore: 0,
 		host:     host,
-		resTimes: NewRingQueue(),
+		lantency: NewRingQueue(),
 	}
 }
 
 // get host by key
 func (bucket *Bucket) GetHosts(key string) (hosts []*Host) {
-	hostIndex := bucket.consistent.offsetGet(key)
+	hostIndex := bucket.partition.offsetGet(key)
 	for i, host := range bucket.hostsList {
 		if i != hostIndex {
 			hosts = append(hosts, host.host)
@@ -82,15 +80,12 @@ func (bucket *Bucket) reScore() {
 		var count int
 		// while the host is down/
 		if host.status == false {
-			host.oldScore = host.score
 			host.score = 0
 		} else {
-			host.oldScore = host.score
-			res := host.resTimes.GetResponses(proxyConf.ResTimeSeconds)
-			// use responseTime and responseCount
-			for _, response := range res {
-				Sum += response.Sum
-				count += response.Count
+			latencies := host.lantency.Get(proxyConf.ResTimeSeconds, latencyData)
+			for _, latency := range latencies {
+				Sum += latency.Sum
+				count += latency.Count
 			}
 			if count > 0 {
 				host.score = Sum / float64(count)
@@ -105,26 +100,25 @@ func (bucket *Bucket) balance() {
 	fromHost, toHost := bucket.getModify()
 	// TODO
 	if bucket.needBalance(fromHost, toHost) {
-		logger.Errorf("bucket %d consistent is %v", bucket.ID, bucket.consistent.offsets)
-		logger.Errorf("bucket %d BALANCE: from host-%s-%d to host-%s-%d ", bucket.ID, bucket.hostsList[fromHost].host.Addr, fromHost, bucket.hostsList[toHost].host.Addr, toHost)
-		bucket.consistent.reBalance(fromHost, toHost, 1)
-		logger.Errorf("bucket %d consistent is %v", bucket.ID, bucket.consistent.offsets)
+		var offsetOld, offsetNew []int
+		offsetOld = bucket.partition.offsets
+		bucket.partition.reBalance(fromHost, toHost, 1)
+		offsetNew = bucket.partition.offsets
+		logger.Errorf("bucket %d BALANCE: from host-%s-%d to host-%s-%d, make offsets %v to %v ", bucket.ID, bucket.hostsList[fromHost].host.Addr, fromHost, bucket.hostsList[toHost].host.Addr, toHost, offsetOld, offsetNew)
 	}
 }
 
 func (bucket *Bucket) needBalance(fromIndex, toIndex int) bool {
-	// while score is less than ResponseTimeMin, use ResponseTimeMin
-	var scoreOfTarget float64
-	if bucket.hostsList[toIndex].score < proxyConf.ResponseTimeMin {
-		scoreOfTarget = proxyConf.ResponseTimeMin
-	} else {
-		scoreOfTarget = bucket.hostsList[toIndex].score
-	}
+	return bucket.roundScore(fromIndex)-bucket.roundScore(toIndex) > proxyConf.ScoreDeviation
+}
 
-	if bucket.hostsList[fromIndex].score-scoreOfTarget > proxyConf.ScoreDeviation {
-		return true
+func (bucket *Bucket) roundScore(hostIndex int) float64 {
+	// while score is less than ResponseTimeMin, use ResponseTimeMin
+	if v := bucket.hostsList[hostIndex].score; v < proxyConf.ResponseTimeMin {
+		return v
+	} else {
+		return proxyConf.ResponseTimeMin
 	}
-	return false
 }
 
 func (bucket *Bucket) getModify() (fromHost, toHost int) {
@@ -156,47 +150,46 @@ func (bucket *Bucket) getModify() (fromHost, toHost int) {
 	return
 }
 
-func (bucket *Bucket) hostIsAlive(addr string) bool {
+// return false if have too much connection errors
+func (bucket *Bucket) isHostAlive(addr string) bool {
 	_, host := bucket.getHostByAddr(addr)
-	errs := host.resTimes.GetErrors(proxyConf.ErrorSeconds)
+	errs := host.lantency.Get(proxyConf.ErrorSeconds, errorData)
 	count := 0
 	for _, err := range errs {
 		count += err.Count
 	}
-	if count > proxyConf.MaxConnectErrors {
-		return false
-	} else {
-		return true
-	}
+	return count < proxyConf.MaxConnectErrors
 }
 
-func (bucket *Bucket) aliveHost(addr string) {
+func (bucket *Bucket) riseHost(addr string) {
 	// TODO 清除历史上的 Errors
 	// 还需要清除 response time
 	// TODO Lock
 	_, hostBucket := bucket.getHostByAddr(addr)
 	if hostBucket.status == false {
 		hostBucket.status = true
-		hostBucket.resTimes.clear()
+		hostBucket.lantency.clear()
 	}
 }
 
-func (bucket *Bucket) addResTime(host string, startTime time.Time, record float64) {
+func (bucket *Bucket) addLatency(host string, startTime time.Time, latency float64) {
 	// TODO 每次添加都会排除掉
 	_, hostBucket := bucket.getHostByAddr(host)
-	if record > 0 {
-		bucket.aliveHost(host)
+	if latency > 0 && !hostBucket.isAlive() {
+		bucket.riseHost(host)
 	}
-	hostBucket.resTimes.Push(startTime, record)
+	hostBucket.lantency.Push(startTime, latency, latencyData)
 }
 
 func (bucket *Bucket) addConErr(host string, startTime time.Time, error float64) {
 	_, hostBucket := bucket.getHostByAddr(host)
-	hostBucket.resTimes.PushErr(startTime, error)
-	hostisalive := bucket.hostIsAlive(host)
-	if !hostisalive {
-		bucket.downHost(host)
-		logger.Errorf("host %s is removed from consistent", host)
+	if hostBucket.isAlive() {
+		hostBucket.lantency.Push(startTime, error, errorData)
+		hostisalive := bucket.isHostAlive(host)
+		if !hostisalive {
+			bucket.downHost(host)
+			logger.Errorf("host %s is removed from partition", host)
+		}
 	}
 }
 
@@ -212,11 +205,14 @@ func (bucket *Bucket) getHostByAddr(addr string) (int, *HostInBucket) {
 func (bucket *Bucket) downHost(addr string) {
 	index, host := bucket.getHostByAddr(addr)
 	host.down()
-	// make suce bucket.hostsList[index].status = false
-	bucket.consistent.remove(index)
+	bucket.partition.remove(index)
 }
 
 func (hb *HostInBucket) down() {
 	hb.status = false
-	hb.resTimes.clear()
+	hb.lantency.clear()
+}
+
+func (hb *HostInBucket) isAlive() bool {
+	return hb.status
 }

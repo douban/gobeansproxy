@@ -1,8 +1,27 @@
 {{ define "body" }}
-<h4>buckets</h4>
-{{ range $bucket, $hosts := .buckets }}
-<li>
-    <a href="/bucketinfo/ {{ $bucket}}"> {{ $bucket }} </a>
-</li>
-{{ end }}
+  <div class="row">
+    <h4>buckets </h4>
+    <table class="table table-bordered sortable table-buckets">
+    <thead>
+      <tr>
+        <th>Bucket</th>
+        <th>Host</th>
+        <th>Percentage</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ range $bucket, $hosts := .buckets }}
+        {{ range $hostAddr, $percentage := $hosts }}
+        <tr>
+            <td>
+                <a href="/bucketinfo/ {{ $bucket}}"> {{ $bucket }} </a>
+            </td>
+          <td>{{ $hostAddr }} </td>
+          <td>{{ $percentage }} </td>
+        </tr>
+        {{ end }}
+      {{ end }}
+    </tbody>
+    </table>
+  </div>
 {{ end }}

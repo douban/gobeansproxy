@@ -44,7 +44,7 @@ func TestAddResTime(t *testing.T) {
 		go func(addr string, resTime []float64) {
 			for _, score := range resTime {
 				now := time.Now()
-				bucket.addResTime(addr, now, score)
+				bucket.addLatency(addr, now, score)
 				time.Sleep(1 * time.Second)
 			}
 			wg.Done()
@@ -98,7 +98,7 @@ func TestDownHost(t *testing.T) {
 		go func(addr string, resTime []float64) {
 			for _, score := range resTime {
 				now := time.Now()
-				bucket.addResTime(addr, now, score)
+				bucket.addLatency(addr, now, score)
 				time.Sleep(1 * time.Second)
 			}
 			wg.Done()

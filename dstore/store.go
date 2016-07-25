@@ -71,7 +71,7 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 			cnt++
 			if item != nil {
 				if item.Cap < proxyConf.ItemSizeStats {
-					c.sched.FeedbackTime(host, key, start, time.Now().Sub(start))
+					c.sched.FeedbackLatency(host, key, start, time.Now().Sub(start))
 				}
 				c.SuccessedTargets = []string{host.Addr}
 				return
@@ -80,9 +80,9 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 			}
 		} else {
 			if isWaitForRetry(err) {
-				c.sched.Feedback(host, key, start, FeedbackConnectErrDefault)
+				c.sched.FeedbackError(host, key, start, FeedbackConnectErrDefault)
 			} else {
-				c.sched.Feedback(host, key, start, FeedbackNonConnectErrDefault)
+				c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDefault)
 			}
 		}
 	}
@@ -132,10 +132,10 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 				if err == nil {
 					err = er
 				}
-				c.sched.Feedback(host, keys[0], start, FeedbackConnectErrDefault)
+				c.sched.FeedbackError(host, keys[0], start, FeedbackConnectErrDefault)
 			} else {
 				err = er
-				c.sched.Feedback(host, keys[0], start, FeedbackNonConnectErrDefault)
+				c.sched.FeedbackError(host, keys[0], start, FeedbackNonConnectErrDefault)
 			}
 		}
 	}
@@ -237,7 +237,7 @@ func (c *StorageClient) setConcurrently(
 			suc++
 			targets = append(targets, res.host.Addr)
 		} else if !isWaitForRetry(res.err) {
-			c.sched.Feedback(res.host, key, res.startTime, FeedbackNonConnectErrSet)
+			c.sched.FeedbackError(res.host, key, res.startTime, FeedbackNonConnectErrSet)
 		}
 	}
 	return
@@ -253,7 +253,7 @@ func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 			suc++
 			c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
 		} else if !isWaitForRetry(err) {
-			c.sched.Feedback(host, key, start, FeedbackNonConnectErrDefault)
+			c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDefault)
 		}
 
 		if suc >= c.W && (i+1) >= c.N {
@@ -327,7 +327,7 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 				continue
 			}
 			if !isWaitForRetry(err) {
-				c.sched.Feedback(host, key, start, FeedbackNonConnectErrDelete)
+				c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDelete)
 			}
 		}
 
