@@ -93,12 +93,7 @@ func (bucket *Bucket) reScore() {
 				count += response.Count
 			}
 			if count > 0 {
-				score := Sum / float64(count)
-				if score < proxyConf.ResponseTimeMin {
-					host.score = proxyConf.ResponseTimeMin
-				} else {
-					host.score = Sum / float64(count)
-				}
+				host.score = Sum / float64(count)
 			} else {
 				host.score = 0
 			}
@@ -118,7 +113,15 @@ func (bucket *Bucket) balance() {
 }
 
 func (bucket *Bucket) needBalance(fromIndex, toIndex int) bool {
-	if bucket.hostsList[fromIndex].score-bucket.hostsList[toIndex].score > proxyConf.ScoreDeviation {
+	// while score is less than ResponseTimeMin, use ResponseTimeMin
+	var scoreOfTarget float64
+	if bucket.hostsList[toIndex].score < proxyConf.ResponseTimeMin {
+		scoreOfTarget = proxyConf.ResponseTimeMin
+	} else {
+		scoreOfTarget = bucket.hostsList[toIndex].score
+	}
+
+	if bucket.hostsList[fromIndex].score-scoreOfTarget > proxyConf.ScoreDeviation {
 		return true
 	}
 	return false
