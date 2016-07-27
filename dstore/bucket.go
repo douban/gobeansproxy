@@ -115,9 +115,9 @@ func (bucket *Bucket) needBalance(fromIndex, toIndex int) bool {
 func (bucket *Bucket) roundScore(hostIndex int) float64 {
 	// while score is less than ResponseTimeMin, use ResponseTimeMin
 	if v := bucket.hostsList[hostIndex].score; v < proxyConf.ResponseTimeMin {
-		return v
-	} else {
 		return proxyConf.ResponseTimeMin
+	} else {
+		return v
 	}
 }
 
