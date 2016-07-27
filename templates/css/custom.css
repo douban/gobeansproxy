@@ -1,3 +1,11 @@
-table tbody tr:nth-child(6n+1), table tbody tr:nth-child(6n+2), table tbody tr:nth-child(6n+3)  {
+.table-buckets > tbody > tr:nth-of-type(6n+1) {
+    background: #ccc;
+}
+
+.table-buckets > tbody > tr:nth-of-type(6n+2) {
+    background: #ccc;
+}
+
+.table-buckets > tbody > tr:nth-of-type(6n+3) {
     background: #ccc;
 }

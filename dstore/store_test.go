@@ -25,6 +25,7 @@ func testClientSet(t *testing.T, c mc.StorageClient, key string, val []byte) {
 	v, err := c.Get(key)
 	getHosts := c.GetSuccessedTargets()
 	c.Clean()
+
 	assert.Equal(val, v.Body)
 	assert.Equal(flag, v.Flag)
 	assert.Equal(1, len(getHosts))

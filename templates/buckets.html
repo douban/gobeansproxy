@@ -1,21 +1,23 @@
 {{ define "body" }}
   <div class="row">
+    <h4>buckets </h4>
     <table class="table table-bordered sortable table-buckets">
-    <h4>Score Stats</h4>
     <thead>
       <tr>
         <th>Bucket</th>
         <th>Host</th>
-        <th>Score</th>
+        <th>Percentage</th>
       </tr>
     </thead>
     <tbody>
-      {{ range $bucket, $hosts := .stats }}
-        {{ range $hostAddr, $score := $hosts }}
+      {{ range $bucket, $hosts := .buckets }}
+        {{ range $hostAddr, $percentage := $hosts }}
         <tr>
-          <td>{{ $bucket }}</td>
+            <td>
+                <a href="/bucketinfo/ {{ $bucket}}"> {{ $bucket }} </a>
+            </td>
           <td>{{ $hostAddr }} </td>
-          <td>{{ $score }} </td>
+          <td>{{ $percentage }} </td>
         </tr>
         {{ end }}
       {{ end }}

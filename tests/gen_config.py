@@ -7,7 +7,6 @@ import copy
 from os.path import join
 from tests.utils import mkdir_p
 
-
 gobeansdb_conf_tmpl = {
     'hstore': {
         'data': {
@@ -55,15 +54,16 @@ route_conf_tmpl = {
     'main': [
         {
             'addr': '127.0.0.1:7980',
-            'buckets': ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f']
-        },
-        {
+            'buckets': ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a',
+                        'b', 'c', 'd', 'e', 'f']
+        }, {
             'addr': '127.0.0.1:7981',
-            'buckets': ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f']
-        },
-        {
+            'buckets': ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a',
+                        'b', 'c', 'd', 'e', 'f']
+        }, {
             'addr': '127.0.0.1:7982',
-            'buckets': ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f']
+            'buckets': ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a',
+                        'b', 'c', 'd', 'e', 'f']
         }
     ],
     'numbucket': 16
@@ -78,7 +78,13 @@ proxy_conf_tmpl = {
         'w': 2,
         'r': 1,
         'read_timeout_ms': 2000,
-        'write_timeout_ms': 2000
+        'write_timeout_ms': 2000,
+        'response_time_seconds': 10,
+        'error_seconds': 10,
+        'max_connect_errors': 3,
+        'score_deviation': 10,
+        'item_size_stats': 4096,
+        'response_time_min': 4000
     },
     'mc': {
         'body_big_str': '5M',
@@ -101,19 +107,12 @@ proxy_conf_tmpl = {
     }
 }
 
-
 ### 注意这里的端口号需要和 gobeansproxy/conf/route.yaml 的端口号一致
 
 # (serverport, webport)
-MAIN_PORT_PAIRS = [
-    (7980, 7990),
-    (7981, 7991),
-    (7982, 7992),
-]
+MAIN_PORT_PAIRS = [(7980, 7990), (7981, 7991), (7982, 7992), ]
 
-BACKUP_PORT_PAIRS = [
-    (7983, 7993),
-]
+BACKUP_PORT_PAIRS = [(7983, 7993), ]
 
 PROXY_PORT_PAIRS = (7905, 7908)
 
@@ -123,10 +122,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--root-dir', help="root directory")
     args = parser.parse_args()
-    gen_conf(os.path.abspath(args.root_dir),
-             MAIN_PORT_PAIRS,
-             BACKUP_PORT_PAIRS,
-             PROXY_PORT_PAIRS)
+    gen_conf(
+        os.path.abspath(args.root_dir), MAIN_PORT_PAIRS, BACKUP_PORT_PAIRS,
+        PROXY_PORT_PAIRS)
 
 
 def gen_conf(root_dir,
@@ -143,8 +141,7 @@ def gen_conf(root_dir,
     proxy_dir = gen_dir(root_dir, 'proxy')
     proxy_conf_dir = gen_dir(proxy_dir, 'conf')
 
-    proxy_conf = gen_proxy_conf(proxy_dir,
-                                proxy_port_pairs[0],
+    proxy_conf = gen_proxy_conf(proxy_dir, proxy_port_pairs[0],
                                 proxy_port_pairs[1])
     yaml_dump(proxy_conf, join(proxy_conf_dir, 'proxy.yaml'))
     yaml_dump(route_conf, join(proxy_conf_dir, 'route.yaml'))
@@ -193,9 +190,10 @@ def gen_route_conf(ports, backup_ports, numbucket=16):
     host = '127.0.0.1'
     buckets = ['%x' % i for i in range(numbucket)]
     tmpl['backup'] = ['%s:%s' % (host, p) for p in backup_ports]
-    tmpl['main'] = [{'addr': '%s:%s' % (host, p), 'buckets': buckets}
-                    for p in ports]
+    tmpl['main'] = [{'addr': '%s:%s' % (host, p),
+                     'buckets': buckets} for p in ports]
     return tmpl
+
 
 def gen_proxy_conf(logdir, port, webport):
     tmpl = copy.deepcopy(proxy_conf_tmpl)

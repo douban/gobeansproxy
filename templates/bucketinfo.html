@@ -1,0 +1,46 @@
+{{ define "body" }}
+  <div class="row">
+    <h4>Bucket Info</h4>
+      {{ range $addr, $host:= .bucketinfo}}
+        {{ range $score, $consistent:= $host}}
+          <div class="col-md-4">
+            <table class="table table-bordered sortable">
+            <thead>
+            <tr>
+                <th>Host</th>
+                <th>Score</th>
+                <th>Percentage</th>
+            </tr>
+            </thead>
+            <tbody>
+            {{ range $arc, $resstats := $consistent}}
+                <tr class="success">
+                    <td>{{ $addr}}</td>
+                    <td>{{ $score}} </td>
+                    <td>{{ $arc}} </td>
+                </tr>
+                <tr>
+                    <td>average</td>
+                    <td>Count</td>
+                    <td>SumTime</td>
+                </tr>
+
+                {{ range $_, $response := $resstats }}
+                    <tr>
+                        {{ if gt $response.Count  0 }}
+                            <td> {{divide  $response.Sum $response.Count }} </td>
+                        {{ else }}
+                            <td> 0 </td>
+                        {{ end }}
+                        <td> {{ $response.Count }} </td>
+                        <td> {{ $response.Sum }} </td>
+                    </tr>
+                {{ end }}
+            {{ end }}
+        </tbody>
+        </table>
+        </div>
+        {{ end }}
+      {{ end }}
+  </div>
+{{ end }}

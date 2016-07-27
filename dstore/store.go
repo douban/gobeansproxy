@@ -61,6 +61,7 @@ func (c *StorageClient) Clean() {
 
 func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 	c.sched = GetScheduler()
+
 	hosts := c.sched.GetHostsByKey(key)
 	cnt := 0
 	for _, host := range hosts[:c.N] {
@@ -69,7 +70,9 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 		if err == nil {
 			cnt++
 			if item != nil {
-				c.sched.FeedbackTime(host, key, time.Now().Sub(start))
+				if item.Cap < proxyConf.ItemSizeStats {
+					c.sched.FeedbackLatency(host, key, start, time.Now().Sub(start))
+				}
 				c.SuccessedTargets = []string{host.Addr}
 				return
 			} else {
@@ -77,9 +80,9 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 			}
 		} else {
 			if isWaitForRetry(err) {
-				c.sched.Feedback(host, key, FeedbackConnectErrDefault)
+				c.sched.FeedbackError(host, key, start, FeedbackConnectErrDefault)
 			} else {
-				c.sched.Feedback(host, key, FeedbackNonConnectErrDefault)
+				c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDefault)
 			}
 		}
 	}
@@ -105,7 +108,6 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 			suc += 1
 			if r != nil {
 				targets = append(targets, host.Addr)
-				c.sched.FeedbackTime(host, keys[0], time.Now().Sub(start))
 			}
 
 			for k, v := range r {
@@ -130,10 +132,10 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 				if err == nil {
 					err = er
 				}
-				c.sched.Feedback(host, keys[0], FeedbackConnectErrDefault)
+				c.sched.FeedbackError(host, keys[0], start, FeedbackConnectErrDefault)
 			} else {
 				err = er
-				c.sched.Feedback(host, keys[0], FeedbackNonConnectErrDefault)
+				c.sched.FeedbackError(host, keys[0], start, FeedbackNonConnectErrDefault)
 			}
 		}
 	}
@@ -206,9 +208,10 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 // cmdReturnType 只在 setConcurrently 函数中使用，
 // 用来在 goroutine 之间传递数据
 type cmdReturnType struct {
-	host *Host
-	ok   bool
-	err  error
+	host      *Host
+	ok        bool
+	err       error
+	startTime time.Time
 }
 
 func (c *StorageClient) setConcurrently(
@@ -221,8 +224,9 @@ func (c *StorageClient) setConcurrently(
 	results := make(chan cmdReturnType, len(hosts))
 	for _, host := range hosts {
 		go func(host *Host) {
+			start := time.Now()
 			ok, err := host.Set(key, item, noreply)
-			res := cmdReturnType{host: host, ok: ok, err: err}
+			res := cmdReturnType{host: host, ok: ok, err: err, startTime: start}
 			results <- res
 		}(host)
 	}
@@ -233,7 +237,7 @@ func (c *StorageClient) setConcurrently(
 			suc++
 			targets = append(targets, res.host.Addr)
 		} else if !isWaitForRetry(res.err) {
-			c.sched.Feedback(res.host, key, FeedbackNonConnectErrSet)
+			c.sched.FeedbackError(res.host, key, res.startTime, FeedbackNonConnectErrSet)
 		}
 	}
 	return
@@ -244,11 +248,12 @@ func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 	c.sched = GetScheduler()
 	suc := 0
 	for i, host := range c.sched.GetHostsByKey(key) {
+		start := time.Now()
 		if ok, err = host.Append(key, value); err == nil && ok {
 			suc++
 			c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
 		} else if !isWaitForRetry(err) {
-			c.sched.Feedback(host, key, FeedbackNonConnectErrDefault)
+			c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDefault)
 		}
 
 		if suc >= c.W && (i+1) >= c.N {
@@ -309,6 +314,7 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 	lastErrStr := ""
 	failedHosts := make([]string, 0, 2)
 	for i, host := range c.sched.GetHostsByKey(key) {
+		start := time.Now()
 		ok, err := host.Delete(key)
 		if ok {
 			suc++
@@ -321,7 +327,7 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 				continue
 			}
 			if !isWaitForRetry(err) {
-				c.sched.Feedback(host, key, FeedbackNonConnectErrDelete)
+				c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDelete)
 			}
 		}
 

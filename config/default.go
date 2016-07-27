@@ -25,5 +25,11 @@ var (
 		ConnectTimeoutMs:    300,
 		WriteTimeoutMs:      2000,
 		DialFailSilenceMs:   5000,
+		ResTimeSeconds:      10,
+		ErrorSeconds:        10,
+		MaxConnectErrors:    10,
+		ScoreDeviation:      10000, // 10000 Microseconds -> 10 Millisecond
+		ItemSizeStats:       4096,
+		ResponseTimeMin:     4000,
 	}
 )

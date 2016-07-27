@@ -22,6 +22,11 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
+func getBucket(r *http.Request) (bucketID int64, err error) {
+	s := filepath.Base(r.URL.Path)
+	return strconv.ParseInt(s, 16, 16)
+}
+
 func handleWebPanic(w http.ResponseWriter) {
 	r := recover()
 	if r != nil {
@@ -57,8 +62,12 @@ type templateHandler struct {
 }
 
 func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// add divide func
+	fm := template.FuncMap{"divide": func(sumTime float64, count int) int {
+		return int(sumTime) / count
+	}}
 	t.once.Do(func() {
-		t.templ = template.Must(template.New("base.html").Option("missingkey=error").ParseFiles(
+		t.templ = template.Must(template.New("base.html").Funcs(fm).Option("missingkey=error").ParseFiles(
 			filepath.Join(proxyConf.StaticDir, t.filename),
 			filepath.Join(proxyConf.StaticDir, "templates/base.html")))
 	})
@@ -67,6 +76,21 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		data = map[string]interface{}{
 			"stats": dstore.GetScheduler().Stats(),
 		}
+	}
+	if t.filename == "templates/bucketinfo.html" {
+		bucketID, err := getBucket(r)
+		if err != nil {
+		}
+		data = map[string]interface{}{
+			"bucketinfo": dstore.GetScheduler().GetBucketInfo(bucketID),
+		}
+	}
+
+	if t.filename == "templates/buckets.html" {
+		data = map[string]interface{}{
+			"buckets": dstore.GetScheduler().Partition(),
+		}
+
 	}
 	e := t.templ.Execute(w, data)
 	if e != nil {
@@ -79,7 +103,12 @@ func startWeb() {
 
 	http.Handle("/", &templateHandler{filename: "templates/stats.html"})
 	http.Handle("/score/", &templateHandler{filename: "templates/score.html"})
+	http.Handle("/bucketinfo/", &templateHandler{filename: "templates/bucketinfo.html"})
+	http.Handle("/buckets", &templateHandler{filename: "templates/buckets.html"})
 	http.HandleFunc("/score/json", handleScore)
+	http.HandleFunc("/api/response_stats", handleSche)
+	http.HandleFunc("/api/partition", handlePartition)
+	http.HandleFunc("/api/bucket/", handleBucket)
 
 	// same as gobeansdb
 	http.HandleFunc("/config/", handleConfig)
@@ -137,6 +166,27 @@ func handleScore(w http.ResponseWriter, r *http.Request) {
 func handleRoute(w http.ResponseWriter, r *http.Request) {
 	defer handleWebPanic(w)
 	handleYaml(w, config.Route)
+}
+
+func handleSche(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
+	responseStats := dstore.GetScheduler().LatenciesStats()
+	handleJson(w, responseStats)
+}
+
+func handlePartition(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
+	partition := dstore.GetScheduler().Partition()
+	handleJson(w, partition)
+}
+
+func handleBucket(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
+	bucketID, err := getBucket(r)
+	if err != nil {
+	}
+	bktInfo := dstore.GetScheduler().GetBucketInfo(bucketID)
+	handleJson(w, bktInfo)
 }
 
 func handleRouteVersion(w http.ResponseWriter, r *http.Request) {

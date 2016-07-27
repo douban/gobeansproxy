@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	Version = "1.0.0.3"
+	Version = "1.0.0.4"
 )
 
 var (
@@ -24,14 +24,20 @@ type ProxyConfig struct {
 }
 
 type DStoreConfig struct {
-	N                   int `yaml:",omitempty"`
-	W                   int `yaml:",omitempty"`
-	R                   int `yaml:",omitempty"`
-	MaxFreeConnsPerHost int `yaml:"max_free_conns_per_host,omitempty"`
-	ConnectTimeoutMs    int `yaml:"connect_timeout_ms,omitempty"`
-	DialFailSilenceMs   int `yaml:"dial_fail_silence_ms,omitempty"`
-	WriteTimeoutMs      int `yaml:"write_timeout_ms,omitempty"`
-	ReadTimeoutMs       int `yaml:"read_timeout_ms,omitempty"`
+	N                   int     `yaml:",omitempty"`
+	W                   int     `yaml:",omitempty"`
+	R                   int     `yaml:",omitempty"`
+	MaxFreeConnsPerHost int     `yaml:"max_free_conns_per_host,omitempty"`
+	ConnectTimeoutMs    int     `yaml:"connect_timeout_ms,omitempty"`
+	DialFailSilenceMs   int     `yaml:"dial_fail_silence_ms,omitempty"`
+	WriteTimeoutMs      int     `yaml:"write_timeout_ms,omitempty"`
+	ReadTimeoutMs       int     `yaml:"read_timeout_ms,omitempty"`
+	ResTimeSeconds      int     `yaml:"response_time_seconds,omitempty"`
+	ErrorSeconds        int     `yaml:"error_seconds,omitempty"`
+	MaxConnectErrors    int     `yaml:"max_connect_errors,omitempty"`
+	ScoreDeviation      float64 `yaml:"score_deviation,omitempty"`
+	ItemSizeStats       int     `yaml:"item_size_stats,omitempty"`
+	ResponseTimeMin     float64 `yaml:"response_time_min,omitempty"`
 }
 
 func (c *ProxyConfig) InitDefault() {
