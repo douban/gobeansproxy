@@ -195,7 +195,7 @@ func (sch *ManualScheduler) Feedback(host *Host, key string, startTime time.Time
 }
 
 func (sch *ManualScheduler) FeedbackError(host *Host, key string, startTime time.Time, errorCode float64) {
-	sch.Feedback(host, key, startTime, errorData)
+	sch.Feedback(host, key, startTime, errorCode)
 }
 
 func (sch *ManualScheduler) FeedbackLatency(host *Host, key string, startTime time.Time, timeUsed time.Duration) {
