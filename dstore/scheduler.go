@@ -334,7 +334,7 @@ func (sch *ManualScheduler) GetBucketInfo(bucketID int64) map[string]map[string]
 		score := fmt.Sprintf("%f", hostInBucket.score)
 		offset := fmt.Sprintf("%d", bkt.partition.getArc(i))
 		r[hostInBucket.host.Addr][score] = map[string][]Response{
-			offset: hostInBucket.lantency.Get(proxyConf.ResTimeSeconds, latencyData),
+			offset: hostInBucket.lantency.Get(proxyConf.ResTimeSeconds, latencyDataType),
 		}
 	}
 	return r
