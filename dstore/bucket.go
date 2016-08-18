@@ -82,7 +82,7 @@ func (bucket *Bucket) reScore() {
 		if host.status == false {
 			host.score = 0
 		} else {
-			latencies := host.lantency.Get(proxyConf.ResTimeSeconds, latencyData)
+			latencies := host.lantency.Get(proxyConf.ResTimeSeconds, latencyDataType)
 			for _, latency := range latencies {
 				Sum += latency.Sum
 				count += latency.Count
@@ -153,7 +153,7 @@ func (bucket *Bucket) getModify() (fromHost, toHost int) {
 // return false if have too much connection errors
 func (bucket *Bucket) isHostAlive(addr string) bool {
 	_, host := bucket.getHostByAddr(addr)
-	errs := host.lantency.Get(proxyConf.ErrorSeconds, errorData)
+	errs := host.lantency.Get(proxyConf.ErrorSeconds, errorDataType)
 	count := 0
 	for _, err := range errs {
 		count += err.Count
@@ -178,13 +178,13 @@ func (bucket *Bucket) addLatency(host string, startTime time.Time, latency float
 	if latency > 0 && !hostBucket.isAlive() {
 		bucket.riseHost(host)
 	}
-	hostBucket.lantency.Push(startTime, latency, latencyData)
+	hostBucket.lantency.Push(startTime, latency, latencyDataType)
 }
 
 func (bucket *Bucket) addConErr(host string, startTime time.Time, error float64) {
 	_, hostBucket := bucket.getHostByAddr(host)
 	if hostBucket.isAlive() {
-		hostBucket.lantency.Push(startTime, error, errorData)
+		hostBucket.lantency.Push(startTime, error, errorDataType)
 		hostisalive := bucket.isHostAlive(host)
 		if !hostisalive {
 			bucket.downHost(host)

@@ -12,8 +12,8 @@ const (
 )
 
 const (
-	latencyData = iota
-	errorData
+	latencyDataType = iota
+	errorDataType
 )
 
 type Response struct {
@@ -44,9 +44,9 @@ func (q *RingQueue) Push(start time.Time, ResTime float64, dataType int) error {
 	second := start.Second()
 	var data *[QUEUECAP]Response
 	switch dataType {
-	case latencyData:
+	case latencyDataType:
 		data = q.resData
-	case errorData:
+	case errorDataType:
 		data = q.errData
 	}
 
@@ -72,9 +72,9 @@ func (q *RingQueue) Get(num, dataType int) (responses []Response) {
 
 	var data *[QUEUECAP]Response
 	switch dataType {
-	case latencyData:
+	case latencyDataType:
 		data = q.resData
-	case errorData:
+	case errorDataType:
 		data = q.errData
 	}
 	q.RLock()

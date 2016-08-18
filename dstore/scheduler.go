@@ -195,7 +195,7 @@ func (sch *ManualScheduler) Feedback(host *Host, key string, startTime time.Time
 }
 
 func (sch *ManualScheduler) FeedbackError(host *Host, key string, startTime time.Time, errorCode float64) {
-	sch.Feedback(host, key, startTime, errorData)
+	sch.Feedback(host, key, startTime, errorCode)
 }
 
 func (sch *ManualScheduler) FeedbackLatency(host *Host, key string, startTime time.Time, timeUsed time.Duration) {
@@ -334,7 +334,7 @@ func (sch *ManualScheduler) GetBucketInfo(bucketID int64) map[string]map[string]
 		score := fmt.Sprintf("%f", hostInBucket.score)
 		offset := fmt.Sprintf("%d", bkt.partition.getArc(i))
 		r[hostInBucket.host.Addr][score] = map[string][]Response{
-			offset: hostInBucket.lantency.Get(proxyConf.ResTimeSeconds, latencyData),
+			offset: hostInBucket.lantency.Get(proxyConf.ResTimeSeconds, latencyDataType),
 		}
 	}
 	return r
