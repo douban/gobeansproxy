@@ -260,6 +260,7 @@ func handleRouteReload(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		// sleep for request to be completed.
 		time.Sleep(time.Duration(proxyConf.ReadTimeoutMs) * time.Millisecond * 5)
+		logger.Infof("scheduler closing when reroute, request: %v", r)
 		oldScheduler.Close()
 	}()
 }
