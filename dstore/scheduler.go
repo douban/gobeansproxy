@@ -127,6 +127,8 @@ func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
 		for {
 			if sch.quit {
 				logger.Infof("close balance goroutine")
+				//wait for all feedback done
+				time.Sleep(10 * time.Second)
 				close(sch.feedChan)
 				break
 			}
