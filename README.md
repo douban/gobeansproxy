@@ -2,9 +2,9 @@
 
 A proxy for [Gobeansdb](https://github.com/douban/gobeansdb).
 
-# Prepare
+## Prepare
 
-GoBeansDB use `vgo` manage dependencies, please install vgo first.
+GoBeansDB use `vgo` manage dependencies, please install [vgo](https://godoc.org/golang.org/x/vgo) first.
 
 ## Install
 
