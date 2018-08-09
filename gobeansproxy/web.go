@@ -1,4 +1,4 @@
-package main
+package gobeansproxy
 
 import (
 	"encoding/json"
@@ -12,12 +12,12 @@ import (
 	"text/template"
 	"time"
 
-	"github.intra.douban.com/coresys/gobeansdb/cmem"
-	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
-	mc "github.intra.douban.com/coresys/gobeansdb/memcache"
-	"github.intra.douban.com/coresys/gobeansdb/utils"
-	"github.intra.douban.com/coresys/gobeansproxy/config"
-	"github.intra.douban.com/coresys/gobeansproxy/dstore"
+	"github.com/douban/gobeansdb/cmem"
+	dbcfg "github.com/douban/gobeansdb/config"
+	mc "github.com/douban/gobeansdb/memcache"
+	"github.com/douban/gobeansdb/utils"
+	"github.com/douban/gobeansproxy/config"
+	"github.com/douban/gobeansproxy/dstore"
 
 	yaml "gopkg.in/yaml.v2"
 )

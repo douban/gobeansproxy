@@ -4,8 +4,8 @@ import (
 	"path"
 	"testing"
 
+	"github.com/douban/gobeansproxy/utils"
 	"github.com/stretchr/testify/assert"
-	"github.intra.douban.com/coresys/gobeansproxy/utils"
 )
 
 func TestLoadConfig(t *testing.T) {

@@ -1,12 +1,13 @@
 package dstore
 
 import (
-	"github.intra.douban.com/coresys/gobeansproxy/config"
-	"github.intra.douban.com/coresys/gobeansproxy/utils"
 	"path"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/douban/gobeansproxy/config"
+	"github.com/douban/gobeansproxy/utils"
 )
 
 func TestAddResTime(t *testing.T) {

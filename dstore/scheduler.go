@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"time"
 
-	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
-	dbutil "github.intra.douban.com/coresys/gobeansdb/utils"
+	dbcfg "github.com/douban/gobeansdb/config"
+	dbutil "github.com/douban/gobeansdb/utils"
 )
 
 const (

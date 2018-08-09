@@ -5,11 +5,11 @@ import (
 	"sync"
 	"time"
 
-	"github.intra.douban.com/coresys/gobeansdb/cmem"
-	"github.intra.douban.com/coresys/gobeansdb/loghub"
-	mc "github.intra.douban.com/coresys/gobeansdb/memcache"
+	"github.com/douban/gobeansdb/cmem"
+	"github.com/douban/gobeansdb/loghub"
+	mc "github.com/douban/gobeansdb/memcache"
 
-	"github.intra.douban.com/coresys/gobeansproxy/config"
+	"github.com/douban/gobeansproxy/config"
 )
 
 var (
@@ -174,7 +174,7 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 	}
 
 	// wait for complete
-	for _, _ = range gs {
+	for range gs {
 		<-reply
 	}
 	return
@@ -272,7 +272,7 @@ func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 }
 
 // NOTE: Incr command may has consistency problem
-// link: http://github.intra.douban.com/coresys/gobeansproxy/issues/7
+// link: http://github.com/douban/gobeansproxy/issues/7
 func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 	c.sched = GetScheduler()
 	suc := 0

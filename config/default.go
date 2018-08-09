@@ -1,7 +1,7 @@
 package config
 
 import (
-	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
+	dbcfg "github.com/douban/gobeansdb/config"
 )
 
 var (

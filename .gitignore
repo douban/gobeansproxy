@@ -5,3 +5,5 @@
 unittest.xml
 venv/
 .idea/
+main
+go.sum

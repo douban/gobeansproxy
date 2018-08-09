@@ -1,4 +1,4 @@
-package main
+package gobeansproxy
 
 import (
 	"flag"
@@ -6,12 +6,12 @@ import (
 	"log"
 	"runtime"
 
-	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
-	"github.intra.douban.com/coresys/gobeansdb/loghub"
-	mc "github.intra.douban.com/coresys/gobeansdb/memcache"
+	dbcfg "github.com/douban/gobeansdb/config"
+	"github.com/douban/gobeansdb/loghub"
+	mc "github.com/douban/gobeansdb/memcache"
 
-	"github.intra.douban.com/coresys/gobeansproxy/config"
-	"github.intra.douban.com/coresys/gobeansproxy/dstore"
+	"github.com/douban/gobeansproxy/config"
+	"github.com/douban/gobeansproxy/dstore"
 )
 
 var (
@@ -21,7 +21,7 @@ var (
 	accessLogger = loghub.AccessLogger
 )
 
-func main() {
+func Main() {
 	var version = flag.Bool("version", false, "print vresion of beansproxy")
 	var confdir = flag.String("confdir", "", "path of proxy config dir")
 	var dumpconf = flag.Bool("dumpconf", false, "print configuration")
@@ -48,7 +48,7 @@ func main() {
 
 	runtime.GOMAXPROCS(proxyConf.Threads)
 
-	loghub.InitLogger(proxyConf.ErrorLog, proxyConf.AccessLog)
+	loghub.InitLogger(proxyConf.ErrorLog, proxyConf.AccessLog, proxyConf.AnalysisLog)
 	logger.Infof("start gobeansproxy")
 	logger.Infof("gobeansproxy version %s starting at %d, config: %#v",
 		config.Version, proxyConf.Port, proxyConf)
@@ -63,7 +63,7 @@ func main() {
 	logger.Infof("ready")
 	log.Printf("ready")
 
-	server.HandleSignals(proxyConf.ErrorLog, proxyConf.AccessLog)
+	server.HandleSignals(proxyConf.ErrorLog, proxyConf.AccessLog, proxyConf.AnalysisLog)
 	dbcfg.AllowReload = true
 	startWeb()
 	server.Serve()

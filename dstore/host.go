@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	mc "github.intra.douban.com/coresys/gobeansdb/memcache"
+	mc "github.com/douban/gobeansdb/memcache"
 )
 
 const (

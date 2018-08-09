@@ -5,11 +5,11 @@ import (
 	"path"
 	"testing"
 
-	mc "github.intra.douban.com/coresys/gobeansdb/memcache"
+	mc "github.com/douban/gobeansdb/memcache"
 
+	"github.com/douban/gobeansproxy/config"
+	"github.com/douban/gobeansproxy/utils"
 	"github.com/stretchr/testify/assert"
-	"github.intra.douban.com/coresys/gobeansproxy/config"
-	"github.intra.douban.com/coresys/gobeansproxy/utils"
 )
 
 func testClientSet(t *testing.T, c mc.StorageClient, key string, val []byte) {

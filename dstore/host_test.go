@@ -4,8 +4,8 @@ import (
 	"path"
 	"testing"
 
-	"github.intra.douban.com/coresys/gobeansproxy/config"
-	"github.intra.douban.com/coresys/gobeansproxy/utils"
+	"github.com/douban/gobeansproxy/config"
+	"github.com/douban/gobeansproxy/utils"
 )
 
 func TestHost(t *testing.T) {

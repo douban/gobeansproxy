@@ -4,8 +4,8 @@ import (
 	"log"
 	"path"
 
-	dbcfg "github.intra.douban.com/coresys/gobeansdb/config"
-	dbutils "github.intra.douban.com/coresys/gobeansdb/utils"
+	dbcfg "github.com/douban/gobeansdb/config"
+	dbutils "github.com/douban/gobeansdb/utils"
 )
 
 const (
@@ -77,7 +77,7 @@ func (c *ProxyConfig) Load(confdir string) {
 			route, err = dbcfg.LoadRouteTableLocal(routePath)
 		}
 		if err != nil {
-			log.Fatal("fail to load route table: %s", err.Error())
+			log.Fatalf("fail to load route table: %s", err.Error())
 		}
 
 		Route = route

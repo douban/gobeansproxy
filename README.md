@@ -1,17 +1,16 @@
 # GoBeansproxy
 
-A proxy for Gobeansdb.
+A proxy for [Gobeansdb](https://github.com/douban/gobeansdb).
 
 ## CI Status
-[![Build status](http://shields.dapps.douban.com/badge/qa-ci/peteris-coresys_gobeansproxy-master-unittest)](http://qa-ci.intra.douban.com/job/peteris-coresys_gobeansproxy-master-unittest)
-
+[![Build Status](https://travis-ci.org/douban/gobeansproxy.svg?branch=master)](https://travis-ci.org/douban/gobeansproxy)
 
 ## Install
 
 ```
-$ cd ${GOHOME}
-$ git clone http://github.intra.douban.com/coresys/gobeansproxy.git src/github.intra.douban.com/coresys/gobeansproxy
-$ cd src/github.intra.douban.com/coresys/gobeansproxy
+$ cd ${GOPATH}
+$ git clone http://github.com/douban/gobeansproxy.git src/github.com/douban/gobeansproxy
+$ cd src/github.com/douban/gobeansproxy
 $ make
 ```
 
@@ -24,5 +23,5 @@ $ make test  # unit test
 ## run
 
 ```
-$ ${GOHOME}/bin/proxy -h
+$ ${GOPATH}/bin/proxy -h
 ```
