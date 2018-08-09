@@ -1,0 +1,21 @@
+language: go
+
+os:
+  - linux
+  - osx
+
+go:
+  - "1.10"
+  - master
+
+before_install:
+  - pip install --user -r tests/pip-req.txt
+
+install:
+  - go get -u golang.org/x/vgo
+  - go get -u golang.org/x/tools/cmd/goimports
+  - go get -u github.com/douban/gobeansdb
+
+script:
+  - diff <(goimports -d .) <(printf "")
+  - make test
