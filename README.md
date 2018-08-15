@@ -5,13 +5,13 @@ A proxy for [Gobeansdb](https://github.com/douban/gobeansdb).
 ## Prepare
 
 GoBeansProxy use `vgo` manage dependencies, please install [vgo](https://godoc.org/golang.org/x/vgo) first.
+Supported Go version: 1.10.1+
 
 ## Install
 
 ```
-$ cd ${GOPATH}
-$ git clone http://github.com/douban/gobeansproxy.git src/github.com/douban/gobeansproxy
-$ cd src/github.com/douban/gobeansproxy
+$ git clone http://github.com/douban/gobeansproxy.git
+$ cd gobeansproxy
 $ make
 ```
 
