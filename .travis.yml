@@ -5,14 +5,17 @@ os:
   - osx
 
 go:
-  - "1.10"
-  - master
+  - "1.10.x"
+  - "1.11.x"
+
+env:
+  - GO111MODULE=on
 
 before_install:
   - pip install --user -r tests/pip-req.txt
 
 install:
-  - go get -u golang.org/x/vgo
+  - go get -t -v ./...
   - go get -u golang.org/x/tools/cmd/goimports
   - go get -u github.com/douban/gobeansdb
 

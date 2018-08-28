@@ -16,8 +16,8 @@ endif
 test:
 	./misc/gobeansdb_server.sh start
 	go version
-	vgo test github.com/douban/gobeansproxy/config
-	vgo test github.com/douban/gobeansproxy/dstore
+	go test github.com/douban/gobeansproxy/config
+	go test github.com/douban/gobeansproxy/dstore
 	./misc/gobeansdb_server.sh stop
 
 template:
@@ -28,4 +28,4 @@ pytest:install
 	./tests/run_test.sh
 
 install:
-	CC=$(COMPILER) vgo install ./
+	CC=$(COMPILER) go install ./
