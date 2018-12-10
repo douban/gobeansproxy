@@ -24,5 +24,9 @@ $ make test  # unit test
 ## run
 
 ```
+# Run with conf
+$ ${GOPATH}/bin/proxy -confdir pathToConfDir
+
+# Others
 $ ${GOPATH}/bin/proxy -h
 ```
