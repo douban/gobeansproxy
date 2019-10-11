@@ -7,4 +7,4 @@ venv/
 vendor/
 .idea/
 main
-go.sum
+vendor/
