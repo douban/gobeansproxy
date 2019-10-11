@@ -5,8 +5,9 @@ os:
   - osx
 
 go:
-  - "1.10.x"
   - "1.11.x"
+  - "1.12.x"
+  - "1.13.x"
 
 env:
   - GO111MODULE=on
@@ -15,10 +16,10 @@ before_install:
   - pip install --user -r tests/pip-req.txt
 
 install:
-  - go get -t -v ./...
   - go get -u golang.org/x/tools/cmd/goimports
-  - go get -u github.com/douban/gobeansdb
 
 script:
   - diff <(goimports -d .) <(printf "")
+  - make install
+  - go get -u github.com/douban/gobeansdb
   - make test

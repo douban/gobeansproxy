@@ -255,7 +255,7 @@ func (sch *ManualScheduler) checkFailsForBucket(bucket *Bucket) {
 		} else {
 			logger.Infof(
 				"beansdb server %s in Bucket %X's Down while check fails , err is %s",
-				hostBucket.host.Addr, bucket, err)
+				hostBucket.host.Addr, bucket.ID, err)
 		}
 	}
 }
