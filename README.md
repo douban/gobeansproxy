@@ -4,8 +4,7 @@ A proxy for [Gobeansdb](https://github.com/douban/gobeansdb).
 
 ## Prepare
 
-GoBeansProxy use `vgo` manage dependencies, please install [vgo](https://godoc.org/golang.org/x/vgo) first.
-Supported Go version: 1.10.1+
+Supported Go version: > 1.11.0
 
 ## Install
 
