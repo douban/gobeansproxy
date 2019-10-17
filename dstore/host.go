@@ -169,11 +169,14 @@ func (host *Host) executeWithTimeout(req *mc.Request, timeout time.Duration) (re
 		}
 	}()
 
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	select {
 	case <-done:
 		resp = tmpResp
 		err = tmpErr
-	case <-time.After(timeout):
+	case <-timer.C:
 		isTimeout <- true
 		err = fmt.Errorf("request %v timeout", req)
 		logger.Infof("request %v to host %s timeout", req, host.Addr)
