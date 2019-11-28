@@ -113,7 +113,10 @@ func (host *Host) executeWithTimeout(req *mc.Request, timeout time.Duration) (re
 	if err != nil {
 		return
 	}
-	conn.SetDeadline(time.Now().Add(timeout))
+	err = conn.SetDeadline(time.Now().Add(timeout))
+	if err != nil {
+		return
+	}
 
 	var reason string
 
@@ -145,6 +148,11 @@ func (host *Host) executeWithTimeout(req *mc.Request, timeout time.Duration) (re
 	if err = resp.Read(reader); err != nil {
 		reason = "read response failed"
 		return nil, err
+	}
+
+	err = conn.SetDeadline(time.Time{})
+	if err != nil {
+		return
 	}
 
 	if err = req.Check(resp); err != nil {
