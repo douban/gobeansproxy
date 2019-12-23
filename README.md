@@ -1,4 +1,4 @@
-# GoBeansproxy [![Build Status](https://travis-ci.org/douban/gobeansproxy.svg?branch=master)](https://travis-ci.org/douban/gobeansproxy)
+# GoBeansProxy ![](https://github.com/douban/gobeansproxy/workflows/GoBeansProxy%20Test/badge.svg)
 
 A proxy for [Gobeansdb](https://github.com/douban/gobeansdb).
 
@@ -11,6 +11,7 @@ Supported Go version: > 1.11.0
 ```
 $ git clone http://github.com/douban/gobeansproxy.git
 $ cd gobeansproxy
+$ go mod vendor
 $ make
 ```
 

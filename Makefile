@@ -17,5 +17,4 @@ pytest:install
 	./tests/run_test.sh
 
 install:
-	GO111MODULE=on go mod vendor
 	go install ./

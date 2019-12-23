@@ -104,7 +104,7 @@ func (bucket *Bucket) balance() {
 		offsetOld = bucket.partition.offsets
 		bucket.partition.reBalance(fromHost, toHost, 1)
 		offsetNew = bucket.partition.offsets
-		logger.Errorf("bucket %d BALANCE: from host-%s-%d to host-%s-%d, make offsets %v to %v ", bucket.ID, bucket.hostsList[fromHost].host.Addr, fromHost, bucket.hostsList[toHost].host.Addr, toHost, offsetOld, offsetNew)
+		logger.Debugf("bucket %d BALANCE: from host-%s-%d to host-%s-%d, make offsets %v to %v ", bucket.ID, bucket.hostsList[fromHost].host.Addr, fromHost, bucket.hostsList[toHost].host.Addr, toHost, offsetOld, offsetNew)
 	}
 }
 
