@@ -1,0 +1,34 @@
+# for doubandb proxy
+# ~/go/src/github.com/dispensable/gobeansproxy/dbtest/conf
+proxy:
+  listen: 0.0.0.0
+  port: 7905
+  webport: 7908
+  threads: 8
+  errorlog:  "~/go/src/github.com/dispensable/gobeansproxy/dbtest/log/proxy-error.log"
+  accesslog: "~/go/src/github.com/dispensable/gobeansproxy/dbtest/log/proxy-access.log"
+  hostname: 127.0.0.1
+  staticdir: ~/go/src/github.com/dispensable/gobeansproxy/dbtest/staticdir/
+  zkserves: []
+  zkpath: "/gobeansproxy/test"
+mc:
+  max_key_len: 250
+  max_req: 16
+  body_max_str: 50M
+  body_big_str: 5M
+  body_c_str: 0K
+dstore:
+  n: 3
+  w: 2
+  r: 1
+  max_free_conns_per_host: 20
+  connect_timeout_ms: 300
+  write_timeout_ms: 2000
+  read_timeout_ms: 2000
+  dial_fail_silence_ms: 5000
+  response_time_seconds: 10
+  error_seconds: 10
+  max_connect_errors: 10
+  score_deviation: 10000
+  item_size_stats: 4096
+  response_time_min: 4000

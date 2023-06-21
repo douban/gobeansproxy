@@ -11,12 +11,12 @@ class AbnormalCmdTest(BaseTest):
     def run_cmd_by_telnet(self, cmd, expected, timeout=2):
         addr, port = self.proxy.addr.split(':')
         t = telnetlib.Telnet(addr, port)
-        t.write('%s\r\n' % cmd)
-        out = t.read_until('\n', timeout=timeout)
-        t.write('quit\n')
+        t.write(f'{cmd}\r\n'.encode())
+        out = t.read_until(b'\n', timeout=timeout)
+        t.write(b'quit\n')
         t.close()
-        r = out.strip('\r\n')
-        self.assertEqual(r, expected)
+        r = out.strip(b'\r\n')
+        self.assertEqual(r, expected.encode())
 
     def test_get(self):
         # get not exist key

@@ -15,7 +15,7 @@ from tests import gen_config
 
 
 GOBEANSDB_CMD = "gobeansdb"
-GOBEANSPROXY_CMD = "../../../../bin/gobeansproxy"
+GOBEANSPROXY_CMD = f"{os.environ['GOPATH']}/bin/gobeansproxy"
 
 
 class BaseTest(unittest.TestCase):
@@ -38,6 +38,7 @@ class BaseTest(unittest.TestCase):
         self.proxy.start()
 
     def tearDown(self):
+        # time.sleep(1000)
         self.proxy.clean()
         for db in self.dbs:
             db.clean()
@@ -49,7 +50,7 @@ class BaseTest(unittest.TestCase):
         content = gethttp(self.proxy.webaddr, 'buffer')
         buffers = json.loads(content)
         self.assertEqual(len(buffers), 4)
-        for _, v in buffers.items():
+        for _, v in list(buffers.items()):
             self.assertEqual(v['Count'], 0, content)
             self.assertEqual(v['Size'], 0, content)
 
@@ -76,7 +77,7 @@ class BaseServerInstance(object):
                 time.sleep(0.5)
 
     def stop(self):
-        print 'stop', self.cmd
+        print('stop', self.cmd)
         if self.popen:
             stop_cmd(self.popen)
             self.popen = None

@@ -2,13 +2,16 @@ package dstore
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/douban/gobeansdb/cmem"
 	"github.com/douban/gobeansdb/loghub"
 	mc "github.com/douban/gobeansdb/memcache"
+	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/douban/gobeansproxy/cassandra"
 	"github.com/douban/gobeansproxy/config"
 )
 
@@ -40,6 +43,9 @@ type StorageClient struct {
 
 	// reinit by GetScheduler() for each request, i.e. entry of each puplic method
 	sched Scheduler
+
+	// cassandra
+	cstar *cassandra.CassandraStore
 }
 
 func NewStorageClient(n int, w int, r int) (c *StorageClient) {
@@ -47,6 +53,14 @@ func NewStorageClient(n int, w int, r int) (c *StorageClient) {
 	c.N = n
 	c.W = w
 	c.R = r
+	if proxyConf.CassandraStoreCfg.ReadEnable || proxyConf.CassandraStoreCfg.WriteEnable {
+		cstar, err := cassandra.NewCassandraStore()
+		if err != nil {
+			panic(err)
+		}
+
+		c.cstar = cstar
+	}
 	return c
 }
 
@@ -60,43 +74,58 @@ func (c *StorageClient) Clean() {
 }
 
 func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
-	c.sched = GetScheduler()
+	if proxyConf.DStoreConfig.ReadEnable {
+		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("get", "beansdb"))
+		defer timer.ObserveDuration()
+		totalReqs.WithLabelValues("get", "beansdb").Inc()
+		c.sched = GetScheduler()
 
-	hosts := c.sched.GetHostsByKey(key)
-	cnt := 0
-	for _, host := range hosts[:c.N] {
-		start := time.Now()
-		item, err = host.Get(key)
-		if err == nil {
-			cnt++
-			if item != nil {
-				if item.Cap < proxyConf.ItemSizeStats {
-					c.sched.FeedbackLatency(host, key, start, time.Now().Sub(start))
+		hosts := c.sched.GetHostsByKey(key)
+		cnt := 0
+		for _, host := range hosts[:c.N] {
+			start := time.Now()
+			item, err = host.Get(key)
+			if err == nil {
+				cnt++
+				if item != nil {
+					if item.Cap < proxyConf.ItemSizeStats {
+						c.sched.FeedbackLatency(host, key, start, time.Now().Sub(start))
+					}
+					c.SuccessedTargets = []string{host.Addr}
+					return
+				} else {
+					c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
 				}
-				c.SuccessedTargets = []string{host.Addr}
-				return
 			} else {
-				c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
-			}
-		} else {
-			if isWaitForRetry(err) {
-				c.sched.FeedbackError(host, key, start, FeedbackConnectErrDefault)
-			} else {
-				c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDefault)
+				if isWaitForRetry(err) {
+					c.sched.FeedbackError(host, key, start, FeedbackConnectErrDefault)
+				} else {
+					c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDefault)
+				}
 			}
 		}
+
+		if cnt >= c.R {
+			// because hosts are sorted
+			err = nil
+		}
+
+		// here is a failure exit
+		return
 	}
 
-	if cnt >= c.R {
-		// because hosts are sorted
-		err = nil
+	if proxyConf.CassandraStoreCfg.ReadEnable {
+		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("get", "cstar"))
+		defer timer.ObserveDuration()
+		totalReqs.WithLabelValues("get", "cstar").Inc()
+		return c.cstar.Get(key)
 	}
 
-	// here is a failure exit
-	return
+	return nil, fmt.Errorf("You must enable at least one read engine for get")
 }
 
 func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets []string, err error) {
+	
 	numKeys := len(keys)
 	rs = make(map[string]*mc.Item, numKeys)
 	hosts := c.sched.GetHostsByKey(keys[0])
@@ -146,62 +175,94 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 }
 
 func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err error) {
-	c.sched = GetScheduler()
-	var lock sync.Mutex
-	rs = make(map[string]*mc.Item, len(keys))
+	if proxyConf.DStoreConfig.ReadEnable {
+		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("get", "beansdb"))
+		defer timer.ObserveDuration()
+		totalReqs.WithLabelValues("getm", "beansdb").Inc()
+		c.sched = GetScheduler()
+		var lock sync.Mutex
+		rs = make(map[string]*mc.Item, len(keys))
 
-	gs := c.sched.DivideKeysByBucket(keys)
-	reply := make(chan bool, len(gs))
-	for _, ks := range gs {
-		if len(ks) > 0 {
-			go func(keys []string) {
-				r, t, e := c.getMulti(keys)
-				if e != nil {
-					err = e
-				} else {
-					for k, v := range r {
-						lock.Lock()
-						rs[k] = v
-						c.SuccessedTargets = append(c.SuccessedTargets, t...)
-						lock.Unlock()
+		gs := c.sched.DivideKeysByBucket(keys)
+		reply := make(chan bool, len(gs))
+		for _, ks := range gs {
+			if len(ks) > 0 {
+				go func(keys []string) {
+					r, t, e := c.getMulti(keys)
+					if e != nil {
+						err = e
+					} else {
+						for k, v := range r {
+							lock.Lock()
+							rs[k] = v
+							c.SuccessedTargets = append(c.SuccessedTargets, t...)
+							lock.Unlock()
+						}
 					}
-				}
+					reply <- true
+				}(ks)
+			} else {
 				reply <- true
-			}(ks)
-		} else {
-			reply <- true
+			}
 		}
+
+		// wait for complete
+		for range gs {
+			<-reply
+		}
+		return
 	}
 
-	// wait for complete
-	for range gs {
-		<-reply
+	if proxyConf.CassandraStoreCfg.ReadEnable {
+		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("get", "cstar"))
+		defer timer.ObserveDuration()
+		totalReqs.WithLabelValues("getm", "cstar").Inc()
+		rs, err = c.cstar.GetMulti(keys)
+		return
 	}
-	return
+
+	return nil, fmt.Errorf("You must enable at least one read engine for get multi")
 }
 
 func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {
-	c.sched = GetScheduler()
-	hosts := c.sched.GetHostsByKey(key)
-	ok = false
-	err = ErrWriteFailed
-	if len(hosts) >= c.N {
-		mainSuc, mainTargets := c.setConcurrently(hosts[:c.N], key, item, noreply)
-		if mainSuc >= c.W {
-			ok = true
-			err = nil
-			c.SuccessedTargets = mainTargets
-		} else {
-			backupSuc, backupTargets := c.setConcurrently(hosts[c.N:], key, item, noreply)
-			if mainSuc+backupSuc >= c.W {
+	defer item.Free()
+	if proxyConf.DStoreConfig.WriteEnable {
+		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("set", "beansdb"))
+		defer timer.ObserveDuration()
+		totalReqs.WithLabelValues("set", "beansdb").Inc()
+
+		c.sched = GetScheduler()
+		hosts := c.sched.GetHostsByKey(key)
+		ok = false
+		err = ErrWriteFailed
+		if len(hosts) >= c.N {
+			mainSuc, mainTargets := c.setConcurrently(hosts[:c.N], key, item, noreply)
+			if mainSuc >= c.W {
 				ok = true
 				err = nil
-				c.SuccessedTargets = append(mainTargets, backupTargets...)
+				c.SuccessedTargets = mainTargets
+			} else {
+				backupSuc, backupTargets := c.setConcurrently(hosts[c.N:], key, item, noreply)
+				if mainSuc+backupSuc >= c.W {
+					ok = true
+					err = nil
+					c.SuccessedTargets = append(mainTargets, backupTargets...)
+				}
 			}
 		}
+		cmem.DBRL.SetData.SubSizeAndCount(item.Cap)
 	}
-	cmem.DBRL.SetData.SubSizeAndCount(item.Cap)
-	item.Free()
+
+	if proxyConf.CassandraStoreCfg.WriteEnable {
+		if proxyConf.DStoreConfig.WriteEnable && err != nil {
+			return
+		}
+		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("set", "cstar"))
+		defer timer.ObserveDuration()
+		totalReqs.WithLabelValues("set", "cstar").Inc()
+		ok, err = c.cstar.Set(key, item)
+	}
+
 	return
 }
 
@@ -308,42 +369,61 @@ func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 
 // TODO: 弄清楚为什么 delete 不遵循 NWR 规则
 func (c *StorageClient) Delete(key string) (flag bool, err error) {
-	c.sched = GetScheduler()
-	suc := 0
-	errCnt := 0
-	lastErrStr := ""
-	failedHosts := make([]string, 0, 2)
-	for i, host := range c.sched.GetHostsByKey(key) {
-		start := time.Now()
-		ok, err := host.Delete(key)
-		if ok {
-			suc++
-			c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
-		} else if err != nil {
-			errCnt++
-			lastErrStr = err.Error()
-			failedHosts = append(failedHosts, host.Addr)
-			if i >= c.N {
-				continue
+	if proxyConf.DStoreConfig.WriteEnable {
+		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("del", "beansdb"))
+		defer timer.ObserveDuration()
+		totalReqs.WithLabelValues("del", "beansdb").Inc()
+		c.sched = GetScheduler()
+		suc := 0
+		errCnt := 0
+		lastErrStr := ""
+		failedHosts := make([]string, 0, 2)
+		for i, host := range c.sched.GetHostsByKey(key) {
+			start := time.Now()
+			ok, err := host.Delete(key)
+			if ok {
+				suc++
+				c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
+			} else if err != nil {
+				errCnt++
+				lastErrStr = err.Error()
+				failedHosts = append(failedHosts, host.Addr)
+				if i >= c.N {
+					continue
+				}
+				if !isWaitForRetry(err) {
+					c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDelete)
+				}
 			}
-			if !isWaitForRetry(err) {
-				c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDelete)
-			}
-		}
 
-		// TODO: 弄清楚这里为什么不是 suc > c.W
-		if suc >= c.N {
-			break
+			// TODO: 弄清楚这里为什么不是 suc > c.W
+			if suc >= c.N {
+				break
+			}
 		}
+		if errCnt > 0 {
+			logger.Warnf("key: %s was delete failed in %v, and the last error is %s",
+				key, failedHosts, lastErrStr)
+		}
+		if errCnt < 2 {
+			err = nil
+		}
+		flag = suc > 0
 	}
-	if errCnt > 0 {
-		logger.Warnf("key: %s was delete failed in %v, and the last error is %s",
-			key, failedHosts, lastErrStr)
+
+	if proxyConf.CassandraStoreCfg.WriteEnable {
+		// when dual write we follow the beansdb principle
+		// if bdb write failed we just return and wait for
+		// client to retry that
+		if proxyConf.DStoreConfig.WriteEnable && err != nil {
+			return
+		}
+		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("del", "cstar"))
+		defer timer.ObserveDuration()
+		totalReqs.WithLabelValues("del", "cstar").Inc()
+		flag, err = c.cstar.Delete(key)
 	}
-	if errCnt < 2 {
-		err = nil
-	}
-	flag = suc > 0
+
 	return
 }
 

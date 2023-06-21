@@ -18,6 +18,7 @@ import (
 	"github.com/douban/gobeansdb/utils"
 	"github.com/douban/gobeansproxy/config"
 	"github.com/douban/gobeansproxy/dstore"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	yaml "gopkg.in/yaml.v2"
 )
@@ -119,6 +120,11 @@ func startWeb() {
 	http.HandleFunc("/route/", handleRoute)
 	http.HandleFunc("/route/version", handleRouteVersion)
 	http.HandleFunc("/route/reload", handleRouteReload)
+	http.Handle(
+		"/metrics",
+		promhttp.HandlerFor(dstore.BdbProxyPromRegistry,
+			promhttp.HandlerOpts{Registry: dstore.BdbProxyPromRegistry}),
+	)
 
 	webaddr := fmt.Sprintf("%s:%d", proxyConf.Listen, proxyConf.WebPort)
 	go func() {
