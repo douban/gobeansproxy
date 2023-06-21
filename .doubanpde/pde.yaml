@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: "gobeansproxy"
+    createId: "{{ uuid }}"
+    createdBy: pdectl
+    createdByUser: wangqiang
+    runByUser: '{{ .CliArgs.String "username" }}'
+    runByPdectlVersion: "{{ .CliArgs.App.Version }}"
+    runnerAddress: "{{ .RunnerAddress }}"
+    createdTime: "{{ .CreatedTime }}"
+    pdeVersion: "v0.1.4"
+    useWebEditor: "false"
+    webEditorPort: 0
+    webEditorType: ""
+  name: "gobeansproxy"
+  annotations:
+    pdectl.douban.com/cfg/exec-cmd: '{{ .CliArgs.String "exec-default-cmd" }}'
+spec:
+  containers:
+    - name: "main"
+      env:
+        - name: HOSTNAME
+          value: "gobeansproxy-main"
+        - name: SCRIBE_HOST
+          value: 10.0.2.2
+      image: "docker.douban/sa/pde-go-cli:latest-1.20-v2"
+      ports:
+      volumeMounts:
+        # mount go path src to container go path
+        - mountPath: /go/src/
+          name: go-path-src
+        # mount code folder
+        - mountPath: /home/project/
+          name: code
+        - mountPath: /root/
+          name: userhome
+        - mountPath: '/home/{{ .CliArgs.String "username" }}'
+          name: userhome
+        - mountPath: /fuse:rslave
+          name: fuse
+        - mountPath: /etc/douban/
+          name: etc-douban
+          readOnly: true
+        - mountPath: /etc/localtime
+          name: etc-localtime
+          readOnly: true
+        - mountPath: /var/run/nscd/
+          name: var-run-nscd
+          readOnly: true
+      workingDir: /home/project
+    - name: mc
+      image: docker.douban/memcached:latest
+      workingDir: /
+    #- name: beansdb
+    #  image: docker.douban/platform/gobeansdb:latest
+    #  workingDir: /data/
+    #  volumeMounts:
+    #    - mountPath: /data
+    #      name: beansdb-data-dir
+    - name: cassandra
+      image: docker.douban/wangqiang/cassandra:latest
+      workingDir: /
+      volumeMounts:
+        - mountPath: /var/lib/cassandra/
+          name: cassandra-data-dir
+  restartPolicy: Never
+  volumes:
+    - hostPath:
+        path: '{{ expandEnvVar "$GOPATH/src" }}'
+        type: Directory
+      name: go-path-src
+    - hostPath:
+        path: '{{ .CliArgs.String "project-dir" }}/.doubanpde/data/beansdb/'
+        type: DirectoryOrCreate
+      name: beansdb-data-dir
+    - hostPath:
+        path: '{{ .CliArgs.String "project-dir" }}/.doubanpde/data/cassandra/'
+        type: DirectoryOrCreate
+      name: cassandra-data-dir
+    - hostPath:
+        path: '{{ .CliArgs.String "project-dir" }}'
+        type: Directory
+      name: code
+    - hostPath:
+        path: '{{ expandEnvVar "$HOME/" }}'
+        type: Directory
+      name: userhome
+    - hostPath:
+        path: /fuse
+        type: Directory
+      name: fuse
+    - hostPath:
+        path: /etc/douban/
+      name: etc-douban
+    - hostPath:
+        path: /etc/localtime
+      name: etc-localtime
+    - hostPath:
+        path: /var/run/nscd/
+      name: var-run-nscd
+

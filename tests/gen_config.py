@@ -84,7 +84,9 @@ proxy_conf_tmpl = {
         'max_connect_errors': 3,
         'score_deviation': 10,
         'item_size_stats': 4096,
-        'response_time_min': 4000
+        'response_time_min': 4000,
+        'enable_write': True,
+        'enable_read': False,
     },
     'mc': {
         'body_big_str': '5M',
@@ -104,7 +106,15 @@ proxy_conf_tmpl = {
         'webport': 7908,
         'zkservers': ["zk1:2181"],
         'zkpath': "/gobeansproxy/test",
-    }
+    },
+    'cassandra': {
+        'enable_read': True,
+        'enable_write': True,
+        'hosts': ["127.0.0.1:9042"],
+        'default_key_space': 'doubandb',
+        'default_table': 'kvstore',
+        'timeout_sec': 5,
+    },
 }
 
 ### 注意这里的端口号需要和 gobeansproxy/conf/route.yaml 的端口号一致

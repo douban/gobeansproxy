@@ -21,6 +21,7 @@ type ProxyConfig struct {
 	dbcfg.ServerConfig `yaml:"proxy,omitempty"`
 	dbcfg.MCConfig     `yaml:"mc,omitempty"`
 	DStoreConfig       `yaml:"dstore,omitempty"`
+	CassandraStoreCfg  `yaml:"cassandra,omitempty"`
 }
 
 type DStoreConfig struct {
@@ -38,6 +39,17 @@ type DStoreConfig struct {
 	ScoreDeviation      float64 `yaml:"score_deviation,omitempty"`
 	ItemSizeStats       int     `yaml:"item_size_stats,omitempty"`
 	ResponseTimeMin     float64 `yaml:"response_time_min,omitempty"`
+	WriteEnable         bool    `yaml:"enable_write"`
+	ReadEnable          bool    `yaml:"enable_read"`
+}
+
+type CassandraStoreCfg struct {
+	ReadEnable bool `yaml:"enable_read"`
+	WriteEnable bool `yaml:"enable_write"`
+	Hosts []string `yaml:"hosts"`
+	DefaultKeySpace string `yaml:"default_key_space"`
+	DefaultTable string `yaml:"default_table"`
+	TimeoutSec int `yaml:"timeout_sec"`
 }
 
 func (c *ProxyConfig) InitDefault() {

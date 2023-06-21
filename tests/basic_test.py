@@ -5,7 +5,7 @@ from tests.dbclient import MCStore
 from tests.utils import random_string
 
 
-VERSION, HASH, FLAG, SIZE, TIMESTAMP, CHUNKID, OFFSET = range(7)
+VERSION, HASH, FLAG, SIZE, TIMESTAMP, CHUNKID, OFFSET = list(range(7))
 
 class KeyVersionTest(BaseTest):
     def setUp(self):
@@ -41,15 +41,15 @@ class KeyVersionTest(BaseTest):
         self.assertEqual(store.get(key), 'aaa')
         self.assertEqual(self.get_meta(store, key), (1, 0, self.last_pos))
 
-        store.set_raw(key, 'bbb', rev=3)
+        store.set_raw(key, b'bbb', rev=3)
         self.update_pos(256)
         self.assertEqual(self.get_meta(store, key), (3, 0, self.last_pos))
 
-        store.set_raw(key, 'bbb', rev=4)
+        store.set_raw(key, b'bbb', rev=4)
         self.assertEqual(self.get_meta(store, key), (4, 0, self.last_pos))
 
-        store.set_raw(key, 'ccc', rev=2)
-        self.assertEqual(store.get(key), 'bbb')
+        store.set_raw(key, b'ccc', rev=2)
+        self.assertEqual(store.get(key), b'bbb')
         self.assertEqual(self.get_meta(store, key), (4, 0, self.last_pos))
 
         self.checkCounterZero()
@@ -77,7 +77,7 @@ class KeyVersionTest(BaseTest):
 
     def test_special_key(self):
         store = MCStore(self.proxy.addr)
-        kvs = [('a' * 200, 1), ('a', range(1000))]
+        kvs = [('a' * 200, 1), ('a', list(range(1000)))]
         for k, v in kvs:
             self.assertTrue(store.set(k, v))
             self.assertEqual(store.get(k), v)
@@ -96,7 +96,7 @@ class KeyVersionTest(BaseTest):
         key = 'largekey'
         size = 10 * 1024 * 1024
         rsize = (((size + len(key) + 24) >> 8) + 1) << 8
-        string_large = random_string(size / 10) * 10
+        string_large = random_string(size // 10) * 10
 
         self.assertTrue(store.set(key, string_large))
         self.assertEqual(store.get(key), string_large)

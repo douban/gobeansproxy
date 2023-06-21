@@ -19,6 +19,7 @@ import (
 	"github.com/douban/gobeansproxy/config"
 	"github.com/douban/gobeansproxy/dstore"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	yaml "gopkg.in/yaml.v2"
 )
 
