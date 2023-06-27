@@ -16,26 +16,40 @@ from tests import gen_config
 
 GOBEANSDB_CMD = "gobeansdb"
 GOBEANSPROXY_CMD = f"{os.environ['GOPATH']}/bin/gobeansproxy"
+GOBEANSDB_READ_ENABLE = os.environ.get("GOBEANSPROXY_TEST_BR") == "1"
+GOBEANSDB_WRITE_ENABLE = os.environ.get("GOBEANSPROXY_TEST_BW") == "1"
+CSTAR_READ_ENABLE = os.environ.get("GOBEANSPROXY_TEST_CR") == "1"
+CSTAR_WRITE_ENABLE = os.environ.get("GOBEANSPROXY_TEST_CW") == "1"
 
 
 class BaseTest(unittest.TestCase):
     def setUp(self):
         root_dir = '/tmp/gobeansproxy_%s/' % uuid.uuid4()
-        gen_config.gen_conf(root_dir)
+        self.bdb_read_enable = GOBEANSDB_READ_ENABLE
+        self.bdb_write_enable = GOBEANSDB_WRITE_ENABLE
+        self.cstar_read_enable = CSTAR_READ_ENABLE
+        self.cstar_write_enable = CSTAR_WRITE_ENABLE
+        gen_config.gen_conf(
+            root_dir,
+            bdb_read_enable=self.bdb_read_enable,
+            bdb_write_enable=self.bdb_write_enable,
+            cstar_read_enable=self.cstar_read_enable,
+            cstar_write_enable=self.cstar_write_enable
+        )
 
         self.dbs = [GobeansdbInstance(os.path.join(root_dir, str(port), 'conf'))
                     for (port, _) in gen_config.MAIN_PORT_PAIRS]
         for db in self.dbs:
-            db.start()
+            db.start(self.bdb_read_enable)
 
         self.backup_dbs = [GobeansdbInstance(os.path.join(root_dir, str(port), 'conf'))
                            for (port, _) in gen_config.BACKUP_PORT_PAIRS]
         for db in self.backup_dbs:
-            db.start()
+            db.start(self.bdb_read_enable)
 
         self.proxy = GobeansproxyInstance(
             os.path.join(root_dir, 'proxy', 'conf'))
-        self.proxy.start()
+        self.proxy.start(self.bdb_read_enable)
 
     def tearDown(self):
         # time.sleep(1000)
@@ -46,6 +60,8 @@ class BaseTest(unittest.TestCase):
             db.clean()
 
     def checkCounterZero(self):
+        if not (self.bdb_read_enable or self.bdb_write_enable):
+            return
         time.sleep(0.5)
         content = gethttp(self.proxy.webaddr, 'buffer')
         buffers = json.loads(content)
@@ -54,6 +70,21 @@ class BaseTest(unittest.TestCase):
             self.assertEqual(v['Count'], 0, content)
             self.assertEqual(v['Size'], 0, content)
 
+    @classmethod
+    def require_rw_enable(func, br, bw, cr, cw):
+        def wrap(func):
+            def check_rw_func(*args, **kwargs):
+                if not (GOBEANSDB_READ_ENABLE in br and \
+                        GOBEANSDB_WRITE_ENABLE in bw and \
+                        CSTAR_READ_ENABLE in cr and \
+                        CSTAR_WRITE_ENABLE in cw):
+                    return
+                return func(*args, **kwargs)
+            return check_rw_func
+
+        return wrap
+            
+
 
 class BaseServerInstance(object):
     def __init__(self, conf_dir, bin, server_name):
@@ -61,14 +92,17 @@ class BaseServerInstance(object):
         self.cmd = '%s -confdir %s' % (bin, conf_dir)
         self.addr, self.webaddr = get_server_addr(conf_dir, server_name)
 
-    def start(self):
+    def start(self, bdb_read_enable=True):
         assert self.popen is None
         self.popen = start_cmd(self.cmd)
         try_times = 0
         while True:
             try:
                 store = MCStore(self.addr)
-                store.get("@")
+                if bdb_read_enable:
+                    store.get("@")
+                else:
+                    store.set("test", "test")
                 return
             except IOError:
                 try_times += 1

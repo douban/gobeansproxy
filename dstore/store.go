@@ -3,6 +3,7 @@ package dstore
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -18,11 +19,12 @@ import (
 var (
 	logger    = loghub.ErrorLogger
 	proxyConf = &config.Proxy
-)
-
-var (
 	// ErrWriteFailed 表示成功写入的节点数小于 StorageClient.W
 	ErrWriteFailed = errors.New("write failed")
+	promBR string // enable bdb read
+	promBW string // enable bdb write
+	promCR string // enable cstar read
+	promCW string // enable cstar write
 )
 
 type Storage struct {
@@ -61,6 +63,11 @@ func NewStorageClient(n int, w int, r int) (c *StorageClient) {
 
 		c.cstar = cstar
 	}
+	promBR = strconv.FormatBool(proxyConf.DStoreConfig.ReadEnable)
+	promBW = strconv.FormatBool(proxyConf.DStoreConfig.WriteEnable)
+	promCR = strconv.FormatBool(proxyConf.CassandraStoreCfg.ReadEnable)
+	promCW = strconv.FormatBool(proxyConf.CassandraStoreCfg.WriteEnable)
+
 	return c
 }
 
@@ -74,9 +81,11 @@ func (c *StorageClient) Clean() {
 }
 
 func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
+	timer := prometheus.NewTimer(
+		cmdE2EDurationSeconds.WithLabelValues("get", promBR, promBW, promCR, promCW),
+	)
+	defer timer.ObserveDuration()
 	if proxyConf.DStoreConfig.ReadEnable {
-		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("get", "beansdb"))
-		defer timer.ObserveDuration()
 		totalReqs.WithLabelValues("get", "beansdb").Inc()
 		c.sched = GetScheduler()
 
@@ -115,17 +124,35 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 	}
 
 	if proxyConf.CassandraStoreCfg.ReadEnable {
-		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("get", "cstar"))
-		defer timer.ObserveDuration()
 		totalReqs.WithLabelValues("get", "cstar").Inc()
-		return c.cstar.Get(key)
+
+		switch key[0] {
+		// ref: https://github.com/douban/gobeansdb/wiki/protocol-extention
+		// ref: https://github.com/douban/gobeansdb/blob/d06c2ff9fcd4f381c54b260ec64186c93d1a024f/gobeansdb/store.go#L157
+		case '?':
+			extended := false
+			if len(key) > 1 {
+				if key[1] == '?' {
+					extended = true
+					key = key[2:]
+				} else {
+					key = key[1:]
+				}
+				if !cassandra.IsValidKeyString(key) {
+					return nil, nil
+				}
+			}
+			return c.cstar.GetMeta(key, extended)
+		default:
+			
+			return c.cstar.Get(key)
+		}
 	}
 
 	return nil, fmt.Errorf("You must enable at least one read engine for get")
 }
 
 func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets []string, err error) {
-	
 	numKeys := len(keys)
 	rs = make(map[string]*mc.Item, numKeys)
 	hosts := c.sched.GetHostsByKey(keys[0])
@@ -175,9 +202,11 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 }
 
 func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err error) {
+	timer := prometheus.NewTimer(
+		cmdE2EDurationSeconds.WithLabelValues("getm", promBR, promBW, promCR, promCW),
+	)
+	defer timer.ObserveDuration()
 	if proxyConf.DStoreConfig.ReadEnable {
-		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("get", "beansdb"))
-		defer timer.ObserveDuration()
 		totalReqs.WithLabelValues("getm", "beansdb").Inc()
 		c.sched = GetScheduler()
 		var lock sync.Mutex
@@ -214,8 +243,6 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 	}
 
 	if proxyConf.CassandraStoreCfg.ReadEnable {
-		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("get", "cstar"))
-		defer timer.ObserveDuration()
 		totalReqs.WithLabelValues("getm", "cstar").Inc()
 		rs, err = c.cstar.GetMulti(keys)
 		return
@@ -226,9 +253,11 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 
 func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {
 	defer item.Free()
+	timer := prometheus.NewTimer(
+		cmdE2EDurationSeconds.WithLabelValues("set", promBR, promBW, promCR, promCW),
+	)
+	defer timer.ObserveDuration()
 	if proxyConf.DStoreConfig.WriteEnable {
-		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("set", "beansdb"))
-		defer timer.ObserveDuration()
 		totalReqs.WithLabelValues("set", "beansdb").Inc()
 
 		c.sched = GetScheduler()
@@ -257,9 +286,10 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 		if proxyConf.DStoreConfig.WriteEnable && err != nil {
 			return
 		}
-		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("set", "cstar"))
-		defer timer.ObserveDuration()
 		totalReqs.WithLabelValues("set", "cstar").Inc()
+		if !cassandra.IsValidKeyString(key) {
+			return false, nil
+		}
 		ok, err = c.cstar.Set(key, item)
 	}
 
@@ -305,6 +335,9 @@ func (c *StorageClient) setConcurrently(
 }
 
 func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
+	if proxyConf.CassandraStoreCfg.WriteEnable {
+		return false, fmt.Errorf("cstar store do not support append")
+	}
 	// NOTE: gobeansdb now do not support `append`, this is not tested.
 	c.sched = GetScheduler()
 	suc := 0
@@ -335,6 +368,9 @@ func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 // NOTE: Incr command may has consistency problem
 // link: http://github.com/douban/gobeansproxy/issues/7
 func (c *StorageClient) Incr(key string, value int) (result int, err error) {
+	if proxyConf.CassandraStoreCfg.WriteEnable {
+		return 0, fmt.Errorf("cstar store do not support incr")
+	}
 	c.sched = GetScheduler()
 	suc := 0
 	for i, host := range c.sched.GetHostsByKey(key) {
@@ -369,9 +405,11 @@ func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 
 // TODO: 弄清楚为什么 delete 不遵循 NWR 规则
 func (c *StorageClient) Delete(key string) (flag bool, err error) {
+	timer := prometheus.NewTimer(
+		cmdE2EDurationSeconds.WithLabelValues("del", promBR, promBW, promCR, promCW),
+	)
+	defer timer.ObserveDuration()
 	if proxyConf.DStoreConfig.WriteEnable {
-		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("del", "beansdb"))
-		defer timer.ObserveDuration()
 		totalReqs.WithLabelValues("del", "beansdb").Inc()
 		c.sched = GetScheduler()
 		suc := 0
@@ -418,9 +456,10 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 		if proxyConf.DStoreConfig.WriteEnable && err != nil {
 			return
 		}
-		timer := prometheus.NewTimer(cmdReqDurationSeconds.WithLabelValues("del", "cstar"))
-		defer timer.ObserveDuration()
 		totalReqs.WithLabelValues("del", "cstar").Inc()
+		if !cassandra.IsValidKeyString(key) {
+			return false, nil
+		}
 		flag, err = c.cstar.Delete(key)
 	}
 
@@ -432,6 +471,9 @@ func (c *StorageClient) Len() int {
 }
 
 func (c *StorageClient) Close() {
+	if proxyConf.CassandraStoreCfg.WriteEnable {
+		c.cstar.Close()
+	}
 	return
 }
 

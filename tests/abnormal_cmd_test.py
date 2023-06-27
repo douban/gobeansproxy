@@ -31,19 +31,35 @@ class AbnormalCmdTest(BaseTest):
     def test_set(self):
         # invalid key
         cmd = 'set %s 0 0 3\r\naaa' % self.invalid_key
-        self.run_cmd_by_telnet(cmd, 'SERVER_ERROR write failed')
+        if self.bdb_write_enable:
+            self.run_cmd_by_telnet(cmd, 'SERVER_ERROR write failed')
+        elif self.cstar_write_enable:
+            self.run_cmd_by_telnet(cmd, 'STORED')
 
         cmd = 'set /test/set 0 0 3\r\naaaa'
         self.run_cmd_by_telnet(cmd, 'CLIENT_ERROR bad data chunk')
+
         self.checkCounterZero()
 
     def test_delete(self):
         key = '/delete/not/exist/key'
         cmd = 'delete %s' % key
-        self.run_cmd_by_telnet(cmd, 'NOT_FOUND')
+        if self.bdb_write_enable and not self.cstar_write_enable:
+            self.run_cmd_by_telnet(cmd, 'NOT FOUND')
+
+        if self.cstar_write_enable:
+            # cstar will delete a key event if not exists
+            # it just write a tombestone to mem
+            self.run_cmd_by_telnet(cmd, 'DELETED')
 
         cmd = 'delete %s' % self.invalid_key
-        self.run_cmd_by_telnet(cmd, 'NOT_FOUND')
+        if self.bdb_write_enable and not self.cstar_write_enable:
+            self.run_cmd_by_telnet(cmd, 'NOT FOUND')
+
+        if self.cstar_write_enable:
+            # cstar will delete a key event if not exists
+            # it just write a tombestone to mem
+            self.run_cmd_by_telnet(cmd, 'DELETED')
         self.checkCounterZero()
 
     def test_get_meta_by_key(self):

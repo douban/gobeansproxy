@@ -11,7 +11,7 @@ def connect(server, **kwargs):
                      comp_threshold=comp_threshold,
                      prefix=prefix)
     c.config(libmc.MC_CONNECT_TIMEOUT, 300)  # 0.3s
-    c.config(libmc.MC_POLL_TIMEOUT, 3000)  # 3s
+    c.config(libmc.MC_POLL_TIMEOUT, 10000)  # 3s
     c.config(libmc.MC_RETRY_TIMEOUT, 5)  # 5s
     return c
 

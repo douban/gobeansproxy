@@ -53,12 +53,16 @@ spec:
     - name: mc
       image: docker.douban/memcached:latest
       workingDir: /
-    #- name: beansdb
-    #  image: docker.douban/platform/gobeansdb:latest
-    #  workingDir: /data/
-    #  volumeMounts:
-    #    - mountPath: /data
-    #      name: beansdb-data-dir
+    {{- range (mkSlice 57980 57981 57982 57983) }}
+    - name: beansdb-{{ . }}
+      image: docker.douban/platform/gobeansdb:latest
+      workingDir: /data/
+      volumeMounts:
+        - mountPath: /data
+          name: beansdb-{{ . }}-data-dir
+        - mountPath: /gobeansdb/default_beansdb_cfg/
+          name: beansdb-{{ . }}-cfg-dir
+    {{- end }}
     - name: cassandra
       image: docker.douban/wangqiang/cassandra:latest
       workingDir: /
@@ -71,10 +75,17 @@ spec:
         path: '{{ expandEnvVar "$GOPATH/src" }}'
         type: Directory
       name: go-path-src
+    {{- $env := . }}
+    {{- range (mkSlice 57980 57981 57982 57983) }}
     - hostPath:
-        path: '{{ .CliArgs.String "project-dir" }}/.doubanpde/data/beansdb/'
+        path: '{{ $env.CliArgs.String "project-dir" }}/.doubanpde/data/beansdb-{{ . }}/'
         type: DirectoryOrCreate
-      name: beansdb-data-dir
+      name: beansdb-{{ . }}-data-dir
+    - hostPath:
+        path: '{{ $env.CliArgs.String "project-dir" }}/.doubanpde/scripts/bdb/gobeansproxy/{{ . }}/conf/'
+        type: Directory
+      name: beansdb-{{ . }}-cfg-dir
+    {{- end }}
     - hostPath:
         path: '{{ .CliArgs.String "project-dir" }}/.doubanpde/data/cassandra/'
         type: DirectoryOrCreate

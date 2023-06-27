@@ -50,6 +50,7 @@ type CassandraStoreCfg struct {
 	DefaultKeySpace string `yaml:"default_key_space"`
 	DefaultTable string `yaml:"default_table"`
 	TimeoutSec int `yaml:"timeout_sec"`
+	MaxConnForGetm int `yaml:"max_conn_for_getm"`
 }
 
 func (c *ProxyConfig) InitDefault() {

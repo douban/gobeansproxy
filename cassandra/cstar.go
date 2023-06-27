@@ -5,11 +5,17 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/douban/gobeansdb/loghub"
 	mc "github.com/douban/gobeansdb/memcache"
 	"github.com/douban/gobeansproxy/config"
 	"github.com/gocql/gocql"
+	"golang.org/x/sync/errgroup"
+)
+
+const (
+	MAX_KEY_LEN = 250
 )
 
 var (
@@ -69,6 +75,12 @@ func (c *CassandraStore) Get(key string) (*mc.Item, error) {
 	err := c.session.Query(
 		selectQ,
 		key).WithContext(ctx).Scan(&value)
+	if err == gocql.ErrNotFound {
+		// https://github.com/douban/gobeansdb/blob/master/memcache/protocol.go#L499
+		// just return nil for not found
+		return nil, nil
+	}
+
 	if err != nil {
 		return nil, err
 	} else {
@@ -79,21 +91,37 @@ func (c *CassandraStore) Get(key string) (*mc.Item, error) {
 func (c *CassandraStore) GetMulti(keys []string) (map[string]*mc.Item, error) {
 	// not using IN for this reason
 	// https://stackoverflow.com/questions/26999098/is-the-in-relation-in-cassandra-bad-for-queries
-	var wg sync.WaitGroup
-	var result map[string]*mc.Item
-	
-	for _, k := range keys {
-		wg.Add(1)
 
-		go func() {
-			defer wg.Done()
-			item, err := c.Get(k)
-			if err == nil {
-				result[k] = item
+	result := map[string]*mc.Item{}
+	lock := sync.Mutex{}
+
+	ctx := context.Background()
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(proxyConf.CassandraStoreCfg.MaxConnForGetm)
+
+	for _, key := range keys {
+		key := key // https://golang.org/doc/faq#closures_and_goroutines
+		g.Go(func() error {
+			item, err := c.Get(key)
+			if item != nil {
+				lock.Lock()
+				defer lock.Unlock()
+				result[key] = item
+			} else {
+				if err != nil {
+					return err
+				}
+				// if item is nil, must be not found, we don't care
+				return nil
 			}
-		}()
+			return nil
+		})
 	}
-	wg.Wait()
+
+	if err := g.Wait(); err != nil {
+		logger.Errorf("getm %s err: %s", keys, err)
+	}
+	
 	return result, nil
 }
 
@@ -131,4 +159,57 @@ func (c *CassandraStore) Delete(key string) (bool, error) {
 	).WithContext(ctx).Exec()
 
 	return err == nil, err
+}
+
+func (c *CassandraStore) GetMeta(key string, extended bool) (*mc.Item, error) {
+	item, err := c.Get(key)
+	if err != nil {
+		return nil, err
+	}
+
+	if item == nil {
+		return nil, err
+	}
+
+	// we fake beansdb metadata
+	// in douban-beansdb those data used to check if records exists
+	var body string
+	if extended {
+		body = fmt.Sprintf(
+			"%d %d %d %d %d %d %d",
+			1, 0, item.Flag, len(item.Body), item.ReceiveTime.Unix(), 0, 0,
+		)
+	} else {
+		body = fmt.Sprintf(
+			"%d %d %d %d %d",
+			1, 0, item.Flag, len(item.Body), item.ReceiveTime.Unix(),
+		)
+	}
+	defer item.CArray.Free()
+
+	result := new(mc.Item)
+	result.Body = []byte(body)
+	result.Flag = 0
+	return result, nil
+}
+
+func IsValidKeyString(key string) bool {
+	length := len(key)
+	if length == 0 || length > MAX_KEY_LEN {
+		logger.Warnf("bad key len=%d", length)
+		return false
+	}
+
+	if key[0] <= ' ' || key[0] == '?' || key[0] == '@' {
+		logger.Warnf("bad key len=%d key[0]=%x", length, key[0])
+		return false
+	}
+
+	for _, r := range key {
+		if unicode.IsControl(r) || unicode.IsSpace(r) {
+			logger.Warnf("bad key len=%d %s", length, key)
+			return false
+		}
+	}
+	return true
 }

@@ -1,5 +1,7 @@
 # coding: utf-8
 
+import os
+
 from tests.base import BaseTest
 from tests.dbclient import MCStore
 from tests.utils import random_string
@@ -25,6 +27,7 @@ class KeyVersionTest(BaseTest):
             assert(len(meta) == 7)
             return tuple([int(meta[i]) for i in [VERSION, CHUNKID, OFFSET]])
 
+    @BaseTest.require_rw_enable(br=(True,), bw=(True,), cr=(False,), cw=(True, False))
     def test_incr(self):
         store = MCStore(self.proxy.addr)
         key = 'key1'
@@ -32,6 +35,7 @@ class KeyVersionTest(BaseTest):
         self.assertEqual(store.get(key), 10)
         self.checkCounterZero()
 
+    @BaseTest.require_rw_enable(br=(True,), bw=(True,), cr=(False,), cw=(False,))
     def test_set_version(self):
         store = MCStore(self.proxy.addr)
         key = 'key1'
@@ -54,6 +58,7 @@ class KeyVersionTest(BaseTest):
 
         self.checkCounterZero()
 
+    @BaseTest.require_rw_enable(br=(True,), bw=(True,), cr=(False,), cw=(False,))
     def test_delete_version(self):
         store = MCStore(self.proxy.addr)
         key = 'key1'
@@ -89,17 +94,47 @@ class KeyVersionTest(BaseTest):
         for (k, v) in kvs:
             v2 = store.get(k)
             self.assertEqual(v2, v, "key %s, value %s, not %s" % (k, v, v2))
-        self.checkCounterZero()
+        if not self.cstar_write_enable:
+            self.checkCounterZero()
 
-    def test_big_value(self):
+    def test_big_v(self):
         store = MCStore(self.proxy.addr)
-        key = 'largekey'
+        key = 'largekeykk'
         size = 10 * 1024 * 1024
-        rsize = (((size + len(key) + 24) >> 8) + 1) << 8
         string_large = random_string(size // 10) * 10
 
         self.assertTrue(store.set(key, string_large))
         self.assertEqual(store.get(key), string_large)
+
+    def test_env(self):
+        self.assertEqual(
+            os.environ.get("GOBEANSPROXY_TEST_BR") == "1",
+            self.bdb_read_enable
+        )
+        self.assertEqual(
+            os.environ.get("GOBEANSPROXY_TEST_BW") == "1",
+            self.bdb_write_enable
+        )
+        self.assertEqual(
+            os.environ.get("GOBEANSPROXY_TEST_CR") == "1",
+            self.cstar_read_enable
+        )
+        self.assertEqual(
+            os.environ.get("GOBEANSPROXY_TEST_CW") == "1",
+            self.cstar_write_enable
+        )
+
+    @BaseTest.require_rw_enable(br=(True,), bw=(True,), cr=(False,), cw=(False,))
+    def test_big_value(self):
+        store = MCStore(self.proxy.addr)
+        key = 'largekey'
+        size = 10 * 1024 * 1024
+        string_large = random_string(size // 10) * 10
+
+        self.assertTrue(store.set(key, string_large))
+        self.assertEqual(store.get(key), string_large)
+
+        rsize = (((size + len(key) + 24) >> 8) + 1) << 8
         self.update_pos(rsize)
 
         self.assertEqual(self.get_meta(store, key), (1, 0, self.last_pos))
