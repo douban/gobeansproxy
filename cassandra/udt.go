@@ -33,7 +33,10 @@ func (b *BDBValue) ToMCItem() *mc.Item {
 		Exptime: b.Exptime,
 		Cas: b.Cas,
 	}
-	item.Alloc(len(b.Body))
+	ok := item.Alloc(len(b.Body))
+	if !ok {
+		logger.Errorf("Alloc mem err for len %d", len(b.Body))
+	}
 	copy(item.CArray.Body, b.Body)
 	return item
 }

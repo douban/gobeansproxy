@@ -140,7 +140,9 @@ def main():
 def gen_conf(root_dir,
              main_port_pairs=MAIN_PORT_PAIRS,
              backup_port_pairs=BACKUP_PORT_PAIRS,
-             proxy_port_pairs=PROXY_PORT_PAIRS):
+             proxy_port_pairs=PROXY_PORT_PAIRS,
+             bdb_read_enable=True, bdb_write_enable=True,
+             cstar_read_enable=False, cstar_write_enable=False):
     ports = [x[0] for x in main_port_pairs]
     backup_ports = [x[0] for x in backup_port_pairs]
     route_conf = gen_route_conf(ports, backup_ports)
@@ -151,8 +153,11 @@ def gen_conf(root_dir,
     proxy_dir = gen_dir(root_dir, 'proxy')
     proxy_conf_dir = gen_dir(proxy_dir, 'conf')
 
-    proxy_conf = gen_proxy_conf(proxy_dir, proxy_port_pairs[0],
-                                proxy_port_pairs[1])
+    proxy_conf = gen_proxy_conf(
+        proxy_dir, proxy_port_pairs[0], proxy_port_pairs[1],
+        bdb_read_enable, bdb_write_enable,
+        cstar_read_enable, cstar_write_enable
+    )
     yaml_dump(proxy_conf, join(proxy_conf_dir, 'proxy.yaml'))
     yaml_dump(route_conf, join(proxy_conf_dir, 'route.yaml'))
 
@@ -205,12 +210,24 @@ def gen_route_conf(ports, backup_ports, numbucket=16):
     return tmpl
 
 
-def gen_proxy_conf(logdir, port, webport):
+def gen_proxy_conf(
+        logdir, port, webport,
+        bdb_read_enable=True, bdb_write_enable=True,
+        cstar_read_enable=False, cstar_write_enable=False):
     tmpl = copy.deepcopy(proxy_conf_tmpl)
     tmpl['proxy']['errorlog'] = os.path.join(logdir, 'error.log')
     tmpl['proxy']['accesslog'] = os.path.join(logdir, 'access.log')
     tmpl['proxy']['port'] = port
     tmpl['proxy']['webport'] = webport
+
+    assert (bdb_read_enable or cstar_read_enable) \
+        and (bdb_write_enable or cstar_write_enable), \
+        'must enable at least one engine'
+    
+    tmpl['cassandra']['enable_read'] = cstar_read_enable
+    tmpl['cassandra']['enable_write'] = cstar_write_enable
+    tmpl['dstore']['enable_read'] = bdb_read_enable
+    tmpl['dstore']['enable_write'] = bdb_write_enable
     return tmpl
 
 
