@@ -34,9 +34,21 @@ type CassandraStore struct {
 func NewCassandraStore() (*CassandraStore, error) {
 	cstarCfg := proxyConf.CassandraStoreCfg
 	cluster := gocql.NewCluster(cstarCfg.Hosts...)
+	if proxyConf.CassandraStoreCfg.Username != "" {
+		cluster.Authenticator = gocql.PasswordAuthenticator{
+			Username: proxyConf.CassandraStoreCfg.Username,
+			Password: proxyConf.CassandraStoreCfg.Password,
+		}
+	}
 	cluster.Keyspace = cstarCfg.DefaultKeySpace
-	// TODO: Use Quorum in production
-	cluster.Consistency = gocql.LocalOne
+	cluster.Consistency = gocql.Quorum
+	cluster.ReconnectInterval = time.Duration(proxyConf.CassandraStoreCfg.ReconnectIntervalSec) * time.Second
+	cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: proxyConf.CassandraStoreCfg.RetryNum}
+	cluster.Timeout = time.Duration(proxyConf.CassandraStoreCfg.CstarTimeoutMs) * time.Millisecond
+	cluster.ConnectTimeout = time.Duration(proxyConf.CassandraStoreCfg.CstarConnectTimeoutMs) * time.Millisecond
+	cluster.WriteTimeout = time.Duration(proxyConf.CassandraStoreCfg.CstarWriteTimeoutMs) * time.Millisecond
+	cluster.NumConns = proxyConf.CassandraStoreCfg.NumConns
+	// cluster.SocketKeepalive = 600 * time.Second
 	session, err := cluster.CreateSession()
 	selectQ = fmt.Sprintf(
 		"select value from %s.%s where key = ?",
@@ -65,16 +77,12 @@ func (c *CassandraStore) Close() {
 }
 
 func (c *CassandraStore) Get(key string) (*mc.Item, error) {
-	ctx, cancel := context.WithTimeout(
-		context.Background(),
-		time.Duration(proxyConf.CassandraStoreCfg.TimeoutSec) * time.Second,
-	)
-	defer cancel()
-
 	value := &BDBValue{}
-	err := c.session.Query(
+	query := c.session.Query(
 		selectQ,
-		key).WithContext(ctx).Scan(&value)
+		key)
+	defer query.Release()
+	err := query.Scan(&value)
 	if err == gocql.ErrNotFound {
 		// https://github.com/douban/gobeansdb/blob/master/memcache/protocol.go#L499
 		// just return nil for not found
@@ -126,37 +134,29 @@ func (c *CassandraStore) GetMulti(keys []string) (map[string]*mc.Item, error) {
 }
 
 func (c *CassandraStore) Set(key string, item *mc.Item) (ok bool, err error) {
-	ctx, cancel := context.WithTimeout(
-		context.Background(),
-		time.Duration(proxyConf.CassandraStoreCfg.TimeoutSec) * time.Second,
-	)
-	defer cancel()
-
 	v := NewBDBValue(item)
-	err = c.session.Query(
+	query := c.session.Query(
 		insertQ,
 		key,
 		v,
-	).WithContext(ctx).Exec()
+	)
+	defer query.Release()
+	err = query.Exec()
 
 	if err != nil {
-		logger.Errorf("Set key err: %s || %s", err, insertQ)
+		logger.Debugf("Set key %s err: %s", key, err)
 		return false, err
 	}
 	return true, nil
 }
 
 func (c *CassandraStore) Delete(key string) (bool, error) {
-	ctx, cancel := context.WithTimeout(
-		context.Background(),
-		time.Duration(proxyConf.CassandraStoreCfg.TimeoutSec) * time.Second,
-	)
-	defer cancel()
-
-	err := c.session.Query(
+	query := c.session.Query(
 		deleteQ,
 		key,
-	).WithContext(ctx).Exec()
+	)
+	defer query.Release()
+	err := query.Exec()
 
 	return err == nil, err
 }
