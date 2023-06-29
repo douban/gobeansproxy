@@ -49,8 +49,16 @@ type CassandraStoreCfg struct {
 	Hosts []string `yaml:"hosts"`
 	DefaultKeySpace string `yaml:"default_key_space"`
 	DefaultTable string `yaml:"default_table"`
-	TimeoutSec int `yaml:"timeout_sec"`
+	CstarTimeoutMs int `yaml:"timeout_ms"`
+	CstarConnectTimeoutMs int `yaml:"connect_timeout_ms"`
+	CstarWriteTimeoutMs int `yaml:"write_timeout_ms"`
 	MaxConnForGetm int `yaml:"max_conn_for_getm"`
+	// ref: https://pkg.go.dev/github.com/gocql/gocql?utm_source=godoc#ClusterConfig
+	ReconnectIntervalSec int `yaml:"reconnect_interval_sec"`
+	RetryNum int `yaml:"retry_num"`
+	NumConns int `yaml:"num_conns"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
 }
 
 func (c *ProxyConfig) InitDefault() {

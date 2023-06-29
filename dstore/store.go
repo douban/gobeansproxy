@@ -25,13 +25,31 @@ var (
 	promBW string // enable bdb write
 	promCR string // enable cstar read
 	promCW string // enable cstar write
+	cstarStorage *cassandra.CassandraStore
 )
 
 type Storage struct {
+	cstar *cassandra.CassandraStore
+}
+
+func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
+	if pCfg.CassandraStoreCfg.ReadEnable || pCfg.CassandraStoreCfg.WriteEnable {
+		cstar, err := cassandra.NewCassandraStore()
+		if err != nil {
+			return err
+		}
+
+		s.cstar = cstar
+	}
+	promBR = strconv.FormatBool(pCfg.DStoreConfig.ReadEnable)
+	promBW = strconv.FormatBool(pCfg.DStoreConfig.WriteEnable)
+	promCR = strconv.FormatBool(pCfg.CassandraStoreCfg.ReadEnable)
+	promCW = strconv.FormatBool(pCfg.CassandraStoreCfg.WriteEnable)
+	return nil
 }
 
 func (s *Storage) Client() mc.StorageClient {
-	return NewStorageClient(proxyConf.N, proxyConf.W, proxyConf.R)
+	return NewStorageClient(proxyConf.N, proxyConf.W, proxyConf.R, s.cstar)
 }
 
 // client for gobeansdb
@@ -50,24 +68,12 @@ type StorageClient struct {
 	cstar *cassandra.CassandraStore
 }
 
-func NewStorageClient(n int, w int, r int) (c *StorageClient) {
+func NewStorageClient(n int, w int, r int, cstar *cassandra.CassandraStore) (c *StorageClient) {
 	c = new(StorageClient)
 	c.N = n
 	c.W = w
 	c.R = r
-	if proxyConf.CassandraStoreCfg.ReadEnable || proxyConf.CassandraStoreCfg.WriteEnable {
-		cstar, err := cassandra.NewCassandraStore()
-		if err != nil {
-			panic(err)
-		}
-
-		c.cstar = cstar
-	}
-	promBR = strconv.FormatBool(proxyConf.DStoreConfig.ReadEnable)
-	promBW = strconv.FormatBool(proxyConf.DStoreConfig.WriteEnable)
-	promCR = strconv.FormatBool(proxyConf.CassandraStoreCfg.ReadEnable)
-	promCW = strconv.FormatBool(proxyConf.CassandraStoreCfg.WriteEnable)
-
+	c.cstar = cstar
 	return c
 }
 

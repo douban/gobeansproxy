@@ -69,6 +69,15 @@ spec:
       volumeMounts:
         - mountPath: /var/lib/cassandra/
           name: cassandra-data-dir
+        - mountPath: /tmp/cassandra/
+          name: cassandra-cfg
+      command:
+        - "/bin/bash"
+      args:
+        - "-c"
+        - >
+          cp -rfv /tmp/cassandra/cassandra.yaml /etc/cassandra/ &&
+          /usr/local/bin/docker-entrypoint.sh cassandra -f
   restartPolicy: Never
   volumes:
     - hostPath:
@@ -90,6 +99,9 @@ spec:
         path: '{{ .CliArgs.String "project-dir" }}/.doubanpde/data/cassandra/'
         type: DirectoryOrCreate
       name: cassandra-data-dir
+    - hostPath:
+        path: '{{ .CliArgs.String "project-dir" }}/.doubanpde/scripts/cassandra/'
+      name: cassandra-cfg
     - hostPath:
         path: '{{ .CliArgs.String "project-dir" }}'
         type: Directory
