@@ -263,6 +263,7 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 		cmdE2EDurationSeconds.WithLabelValues("set", promBR, promBW, promCR, promCW),
 	)
 	defer timer.ObserveDuration()
+
 	if proxyConf.DStoreConfig.WriteEnable {
 		totalReqs.WithLabelValues("set", "beansdb").Inc()
 
@@ -297,6 +298,9 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 			return false, nil
 		}
 		ok, err = c.cstar.Set(key, item)
+		if proxyConf.DStoreConfig.WriteEnable && err != nil {
+			logger.Warnf("Set on bdb succ c* failed: %s", key)
+		}
 	}
 
 	return
@@ -467,6 +471,9 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 			return false, nil
 		}
 		flag, err = c.cstar.Delete(key)
+		if proxyConf.DStoreConfig.WriteEnable && err != nil {
+			logger.Warnf("Del on bdb succ but c* failed: %s", key)
+		}
 	}
 
 	return
