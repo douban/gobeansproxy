@@ -287,6 +287,9 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 			}
 		}
 		cmem.DBRL.SetData.SubSizeAndCount(item.Cap)
+		if err != nil {
+			errorReqs.WithLabelValues("set", "beansdb").Inc()
+		}
 	}
 
 	if proxyConf.CassandraStoreCfg.WriteEnable {
@@ -298,6 +301,10 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 			return false, nil
 		}
 		ok, err = c.cstar.Set(key, item)
+		if err != nil {
+			errorReqs.WithLabelValues("set", "cstar").Inc()
+			logger.Errorf("set on c* failed: %s, err: %s", err, key)
+		}
 		if proxyConf.DStoreConfig.WriteEnable && err != nil {
 			logger.Warnf("Set on bdb succ c* failed: %s", key)
 		}
@@ -457,6 +464,9 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 			err = nil
 		}
 		flag = suc > 0
+		if err != nil {
+			errorReqs.WithLabelValues("del", "beansdb").Inc()
+		}
 	}
 
 	if proxyConf.CassandraStoreCfg.WriteEnable {
@@ -471,6 +481,10 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 			return false, nil
 		}
 		flag, err = c.cstar.Delete(key)
+		if err != nil {
+			errorReqs.WithLabelValues("del", "cstar").Inc()
+			logger.Errorf("del on c* failed: %s, err: %s", err, key)
+		}
 		if proxyConf.DStoreConfig.WriteEnable && err != nil {
 			logger.Warnf("Del on bdb succ but c* failed: %s", key)
 		}
