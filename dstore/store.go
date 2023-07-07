@@ -8,7 +8,7 @@ import (
 	"github.com/douban/gobeansdb/cmem"
 	"github.com/douban/gobeansdb/loghub"
 	mc "github.com/douban/gobeansdb/memcache"
-
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/douban/gobeansproxy/config"
 )
 
@@ -60,6 +60,12 @@ func (c *StorageClient) Clean() {
 }
 
 func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
+	timer := prometheus.NewTimer(
+		cmdE2EDurationSeconds.WithLabelValues("get", "true", "true", "false", "false"),
+	)
+	defer timer.ObserveDuration()
+	totalReqs.WithLabelValues("get", "beansdb").Inc()
+
 	c.sched = GetScheduler()
 
 	hosts := c.sched.GetHostsByKey(key)
@@ -146,6 +152,12 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 }
 
 func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err error) {
+	timer := prometheus.NewTimer(
+		cmdE2EDurationSeconds.WithLabelValues("getm", "true", "true", "false", "false"),
+	)
+	defer timer.ObserveDuration()
+	totalReqs.WithLabelValues("getm", "beansdb").Inc()
+
 	c.sched = GetScheduler()
 	var lock sync.Mutex
 	rs = make(map[string]*mc.Item, len(keys))
@@ -181,6 +193,11 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 }
 
 func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {
+	timer := prometheus.NewTimer(
+		cmdE2EDurationSeconds.WithLabelValues("set", "true", "true", "false", "false"),
+	)
+	defer timer.ObserveDuration()
+	totalReqs.WithLabelValues("set", "beansdb").Inc()
 	c.sched = GetScheduler()
 	hosts := c.sched.GetHostsByKey(key)
 	ok = false
@@ -308,6 +325,12 @@ func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 
 // TODO: 弄清楚为什么 delete 不遵循 NWR 规则
 func (c *StorageClient) Delete(key string) (flag bool, err error) {
+	timer := prometheus.NewTimer(
+		cmdE2EDurationSeconds.WithLabelValues("del", "true", "true", "false", "false"),
+	)
+	defer timer.ObserveDuration()
+	totalReqs.WithLabelValues("del", "beansdb").Inc()
+
 	c.sched = GetScheduler()
 	suc := 0
 	errCnt := 0
