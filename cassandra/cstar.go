@@ -31,36 +31,35 @@ type CassandraStore struct {
 	session *gocql.Session
 }
 
-func NewCassandraStore() (*CassandraStore, error) {
-	cstarCfg := proxyConf.CassandraStoreCfg
+func NewCassandraStore(cstarCfg *config.CassandraStoreCfg) (*CassandraStore, error) {
 	cluster := gocql.NewCluster(cstarCfg.Hosts...)
-	if proxyConf.CassandraStoreCfg.Username != "" {
+	if cstarCfg.Username != "" {
 		cluster.Authenticator = gocql.PasswordAuthenticator{
-			Username: proxyConf.CassandraStoreCfg.Username,
-			Password: proxyConf.CassandraStoreCfg.Password,
+			Username: cstarCfg.Username,
+			Password: cstarCfg.Password,
 		}
 	}
 	cluster.Keyspace = cstarCfg.DefaultKeySpace
 	cluster.Consistency = gocql.Quorum
-	cluster.ReconnectInterval = time.Duration(proxyConf.CassandraStoreCfg.ReconnectIntervalSec) * time.Second
-	cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: proxyConf.CassandraStoreCfg.RetryNum}
-	cluster.Timeout = time.Duration(proxyConf.CassandraStoreCfg.CstarTimeoutMs) * time.Millisecond
-	cluster.ConnectTimeout = time.Duration(proxyConf.CassandraStoreCfg.CstarConnectTimeoutMs) * time.Millisecond
-	cluster.WriteTimeout = time.Duration(proxyConf.CassandraStoreCfg.CstarWriteTimeoutMs) * time.Millisecond
-	cluster.NumConns = proxyConf.CassandraStoreCfg.NumConns
+	cluster.ReconnectInterval = time.Duration(cstarCfg.ReconnectIntervalSec) * time.Second
+	cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: cstarCfg.RetryNum}
+	cluster.Timeout = time.Duration(cstarCfg.CstarTimeoutMs) * time.Millisecond
+	cluster.ConnectTimeout = time.Duration(cstarCfg.CstarConnectTimeoutMs) * time.Millisecond
+	cluster.WriteTimeout = time.Duration(cstarCfg.CstarWriteTimeoutMs) * time.Millisecond
+	cluster.NumConns = cstarCfg.NumConns
 	// cluster.SocketKeepalive = 600 * time.Second
 	session, err := cluster.CreateSession()
 	selectQ = fmt.Sprintf(
 		"select value from %s.%s where key = ?",
-		proxyConf.CassandraStoreCfg.DefaultKeySpace, proxyConf.CassandraStoreCfg.DefaultTable,
+		cstarCfg.DefaultKeySpace, cstarCfg.DefaultTable,
 	)
 	insertQ = fmt.Sprintf(
 		"insert into %s.%s (key, value) values (?, ?)",
-		proxyConf.CassandraStoreCfg.DefaultKeySpace, proxyConf.CassandraStoreCfg.DefaultTable,
+		cstarCfg.DefaultKeySpace, cstarCfg.DefaultTable,
 	)
 	deleteQ = fmt.Sprintf(
 		"delete from %s.%s where key = ?",
-		proxyConf.CassandraStoreCfg.DefaultKeySpace, proxyConf.CassandraStoreCfg.DefaultTable,
+		cstarCfg.DefaultKeySpace, cstarCfg.DefaultTable,
 	)
 	if err != nil {
 		return nil, err
