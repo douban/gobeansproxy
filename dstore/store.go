@@ -34,7 +34,7 @@ type Storage struct {
 
 func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
 	if pCfg.CassandraStoreCfg.ReadEnable || pCfg.CassandraStoreCfg.WriteEnable {
-		cstar, err := cassandra.NewCassandraStore()
+		cstar, err := cassandra.NewCassandraStore(&proxyConf.CassandraStoreCfg)
 		if err != nil {
 			return err
 		}
