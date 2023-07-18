@@ -132,6 +132,22 @@ func (c *CassandraStore) GetMulti(keys []string) (map[string]*mc.Item, error) {
 	return result, nil
 }
 
+func (c *CassandraStore) SetWithValue(key string, v *BDBValue) (ok bool, err error) {
+	query := c.session.Query(
+		insertQ,
+		key,
+		v,
+	)
+	defer query.Release()
+	err = query.Exec()
+
+	if err != nil {
+		logger.Debugf("Set key %s err: %s", key, err)
+		return false, err
+	}
+	return true, nil
+}
+
 func (c *CassandraStore) Set(key string, item *mc.Item) (ok bool, err error) {
 	v := NewBDBValue(item)
 	query := c.session.Query(
