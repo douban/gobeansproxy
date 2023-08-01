@@ -54,7 +54,9 @@ func Main() {
 		config.Version, proxyConf.Port, proxyConf)
 	logger.Infof("route table: %#v", config.Route)
 
-	dstore.InitGlobalManualScheduler(config.Route, proxyConf.N)
+	if proxyConf.DStoreConfig.ReadEnable || proxyConf.DStoreConfig.WriteEnable {
+		dstore.InitGlobalManualScheduler(config.Route, proxyConf.N)
+	}
 	storage := new(dstore.Storage)
 	err := storage.InitStorageEngine(proxyConf)
 	if err != nil {
