@@ -59,6 +59,7 @@ type CassandraStoreCfg struct {
 	NumConns int `yaml:"num_conns"`
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
+	TableToKeyPrefix map[string][]string `yaml:"table_to_keyprefix"`
 }
 
 func (c *ProxyConfig) InitDefault() {

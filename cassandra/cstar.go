@@ -29,6 +29,8 @@ var (
 type CassandraStore struct {
 	cluster *gocql.ClusterConfig
 	session *gocql.Session
+	keyTableFinder *KeyTableFinder
+	staticTable bool
 }
 
 func NewCassandraStore(cstarCfg *config.CassandraStoreCfg) (*CassandraStore, error) {
@@ -47,6 +49,7 @@ func NewCassandraStore(cstarCfg *config.CassandraStoreCfg) (*CassandraStore, err
 	cluster.ConnectTimeout = time.Duration(cstarCfg.CstarConnectTimeoutMs) * time.Millisecond
 	cluster.WriteTimeout = time.Duration(cstarCfg.CstarWriteTimeoutMs) * time.Millisecond
 	cluster.NumConns = cstarCfg.NumConns
+
 	// cluster.SocketKeepalive = 600 * time.Second
 	session, err := cluster.CreateSession()
 	selectQ = fmt.Sprintf(
@@ -61,12 +64,25 @@ func NewCassandraStore(cstarCfg *config.CassandraStoreCfg) (*CassandraStore, err
 		"delete from %s.%s where key = ?",
 		cstarCfg.DefaultKeySpace, cstarCfg.DefaultTable,
 	)
+
 	if err != nil {
 		return nil, err
 	} else {
+		ktFinder, err := NewKeyTableFinder(cstarCfg)
+		if err != nil {
+			return nil, err
+		}
+
+		staticT := false
+		if len(cstarCfg.TableToKeyPrefix) == 0 {
+			staticT = true
+		}
+
 		return &CassandraStore{
 			cluster: cluster,
 			session: session,
+			keyTableFinder: ktFinder,
+			staticTable: staticT,
 		}, nil
 	}
 }
@@ -76,10 +92,15 @@ func (c *CassandraStore) Close() {
 }
 
 func (c *CassandraStore) Get(key string) (*mc.Item, error) {
+	var q string
+	if c.staticTable {
+		q = selectQ
+	} else {
+		q = c.keyTableFinder.GetSqlTpl("select", key)
+	}
+
 	value := &BDBValue{}
-	query := c.session.Query(
-		selectQ,
-		key)
+	query := c.session.Query(q, key)
 	defer query.Release()
 	err := query.Scan(&value)
 	if err == gocql.ErrNotFound {
@@ -133,8 +154,16 @@ func (c *CassandraStore) GetMulti(keys []string) (map[string]*mc.Item, error) {
 }
 
 func (c *CassandraStore) SetWithValue(key string, v *BDBValue) (ok bool, err error) {
+	var q string
+
+	if c.staticTable {
+		q = insertQ
+	} else {
+		q = c.keyTableFinder.GetSqlTpl("insert", key)
+	}
+
 	query := c.session.Query(
-		insertQ,
+		q,
 		key,
 		v,
 	)
@@ -145,13 +174,22 @@ func (c *CassandraStore) SetWithValue(key string, v *BDBValue) (ok bool, err err
 		logger.Debugf("Set key %s err: %s", key, err)
 		return false, err
 	}
+	
 	return true, nil
 }
 
 func (c *CassandraStore) Set(key string, item *mc.Item) (ok bool, err error) {
+	var q string
+
+	if c.staticTable {
+		q = insertQ
+	} else {
+		q = c.keyTableFinder.GetSqlTpl("insert", key)
+	}
+
 	v := NewBDBValue(item)
 	query := c.session.Query(
-		insertQ,
+		q,
 		key,
 		v,
 	)
@@ -166,8 +204,16 @@ func (c *CassandraStore) Set(key string, item *mc.Item) (ok bool, err error) {
 }
 
 func (c *CassandraStore) Delete(key string) (bool, error) {
+	var q string
+
+	if c.staticTable {
+		q = deleteQ
+	} else {
+		q = c.keyTableFinder.GetSqlTpl("delete", key)
+	}
+
 	query := c.session.Query(
-		deleteQ,
+		q,
 		key,
 	)
 	defer query.Release()

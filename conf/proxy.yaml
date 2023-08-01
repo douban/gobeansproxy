@@ -31,3 +31,22 @@ dstore:
   score_deviation: 10000
   item_size_stats: 4096
   response_time_min: 4000
+cassandra:
+  default_key_space: dbname
+  default_table: tablename
+  table_to_keyprefix:
+    table:
+      - "prefix1"
+  enable_read: true
+  enable_write: true
+  hosts:
+  - cassandra:9042
+  timeout_ms: 1000
+  connect_timeout_ms: 3000
+  write_timeout_ms: 1000
+  retry_num: 3
+  reconnect_interval_sec: 180
+  max_conn_for_getm: 10
+  num_conns: 10
+  username: ""
+  password: ""
