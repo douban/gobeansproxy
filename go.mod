@@ -43,6 +43,6 @@ require (
 go 1.20
 
 // for lcoal dev
-replace github.com/douban/gobeansdb => ../gobeansdb
+// replace github.com/douban/gobeansdb => ../gobeansdb
 
-replace github.com/douban/gobeansproxy => ../gobeansproxy
+// replace github.com/douban/gobeansproxy => ../gobeansproxy
