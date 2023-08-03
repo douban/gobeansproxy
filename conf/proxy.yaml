@@ -49,4 +49,7 @@ cassandra:
   max_conn_for_getm: 10
   num_conns: 10
   username: ""
+  # plaintext password only for test usage
+  # please use password_file in prod env
   password: ""
+  password_file: ""

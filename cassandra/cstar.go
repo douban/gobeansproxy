@@ -3,6 +3,8 @@ package cassandra
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"time"
 	"unicode"
@@ -36,9 +38,18 @@ type CassandraStore struct {
 func NewCassandraStore(cstarCfg *config.CassandraStoreCfg) (*CassandraStore, error) {
 	cluster := gocql.NewCluster(cstarCfg.Hosts...)
 	if cstarCfg.Username != "" {
+		password := cstarCfg.Password
+		if cstarCfg.PasswordFile != "" {
+			data, err := os.ReadFile(cstarCfg.PasswordFile)
+			if err != nil {
+				return nil, err
+			}
+			password = strings.TrimSuffix(string(data), "\n")
+		}
+
 		cluster.Authenticator = gocql.PasswordAuthenticator{
 			Username: cstarCfg.Username,
-			Password: cstarCfg.Password,
+			Password: password,
 		}
 	}
 	cluster.Keyspace = cstarCfg.DefaultKeySpace

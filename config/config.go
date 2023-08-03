@@ -59,6 +59,7 @@ type CassandraStoreCfg struct {
 	NumConns int `yaml:"num_conns"`
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
+	PasswordFile string `yaml:"password_file"`
 	TableToKeyPrefix map[string][]string `yaml:"table_to_keyprefix"`
 }
 
