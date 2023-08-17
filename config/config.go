@@ -22,6 +22,7 @@ type ProxyConfig struct {
 	dbcfg.MCConfig     `yaml:"mc,omitempty"`
 	DStoreConfig       `yaml:"dstore,omitempty"`
 	CassandraStoreCfg  `yaml:"cassandra,omitempty"`
+	Confdir string
 }
 
 type DStoreConfig struct {
@@ -60,7 +61,9 @@ type CassandraStoreCfg struct {
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
 	PasswordFile string `yaml:"password_file"`
+	Consistency string  `yaml:"consistency,omitempty"`
 	TableToKeyPrefix map[string][]string `yaml:"table_to_keyprefix"`
+	SwitchToKeyPrefixes map[string][]string `yaml:"switch_to_keyprefixes"`
 }
 
 func (c *ProxyConfig) InitDefault() {
@@ -106,6 +109,7 @@ func (c *ProxyConfig) Load(confdir string) {
 		Route = route
 		checkConfig(c, Route)
 	}
+	c.Confdir = confdir
 	dbutils.InitSizesPointer(c)
 	c.ConfigPackages()
 }

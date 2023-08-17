@@ -53,7 +53,14 @@ func NewCassandraStore(cstarCfg *config.CassandraStoreCfg) (*CassandraStore, err
 		}
 	}
 	cluster.Keyspace = cstarCfg.DefaultKeySpace
-	cluster.Consistency = gocql.Quorum
+
+	switch cstarCfg.Consistency {
+	case "local_one":
+		cluster.Consistency = gocql.LocalOne
+	default:
+		cluster.Consistency = gocql.Quorum	
+	}
+
 	cluster.ReconnectInterval = time.Duration(cstarCfg.ReconnectIntervalSec) * time.Second
 	cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: cstarCfg.RetryNum}
 	cluster.Timeout = time.Duration(cstarCfg.CstarTimeoutMs) * time.Millisecond
@@ -127,11 +134,10 @@ func (c *CassandraStore) Get(key string) (*mc.Item, error) {
 	}
 }
 
-func (c *CassandraStore) GetMulti(keys []string) (map[string]*mc.Item, error) {
+func (c *CassandraStore) GetMulti(keys []string, result map[string]*mc.Item) error {
 	// not using IN for this reason
 	// https://stackoverflow.com/questions/26999098/is-the-in-relation-in-cassandra-bad-for-queries
 
-	result := map[string]*mc.Item{}
 	lock := sync.Mutex{}
 
 	ctx := context.Background()
@@ -160,8 +166,8 @@ func (c *CassandraStore) GetMulti(keys []string) (map[string]*mc.Item, error) {
 	if err := g.Wait(); err != nil {
 		logger.Errorf("getm %s err: %s", keys, err)
 	}
-	
-	return result, nil
+
+	return nil
 }
 
 func (c *CassandraStore) SetWithValue(key string, v *BDBValue) (ok bool, err error) {
