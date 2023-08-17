@@ -25,11 +25,12 @@ var (
 	promBW string // enable bdb write
 	promCR string // enable cstar read
 	promCW string // enable cstar write
-	cstarStorage *cassandra.CassandraStore
+	PrefixStorageSwitcher *cassandra.PrefixSwitcher
 )
 
 type Storage struct {
 	cstar *cassandra.CassandraStore
+	PSwitcher *cassandra.PrefixSwitcher
 }
 
 func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
@@ -40,6 +41,13 @@ func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
 		}
 
 		s.cstar = cstar
+
+		switcher, err := cassandra.NewPrefixSwitcher(&proxyConf.CassandraStoreCfg)
+		if err != nil {
+			return err
+		}
+		s.PSwitcher = switcher
+		PrefixStorageSwitcher = switcher
 	}
 	promBR = strconv.FormatBool(pCfg.DStoreConfig.ReadEnable)
 	promBW = strconv.FormatBool(pCfg.DStoreConfig.WriteEnable)
@@ -49,7 +57,10 @@ func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
 }
 
 func (s *Storage) Client() mc.StorageClient {
-	return NewStorageClient(proxyConf.N, proxyConf.W, proxyConf.R, s.cstar)
+	return NewStorageClient(
+		proxyConf.N, proxyConf.W, proxyConf.R,
+		s.cstar, s.PSwitcher,
+	)
 }
 
 // client for gobeansdb
@@ -66,14 +77,20 @@ type StorageClient struct {
 
 	// cassandra
 	cstar *cassandra.CassandraStore
+
+	// prefix storage switcher
+	pswitcher *cassandra.PrefixSwitcher
 }
 
-func NewStorageClient(n int, w int, r int, cstar *cassandra.CassandraStore) (c *StorageClient) {
+func NewStorageClient(n int, w int, r int,
+	cstar *cassandra.CassandraStore,
+	pStoreSwitcher *cassandra.PrefixSwitcher) (c *StorageClient) {
 	c = new(StorageClient)
 	c.N = n
 	c.W = w
 	c.R = r
 	c.cstar = cstar
+	c.pswitcher = pStoreSwitcher
 	return c
 }
 
@@ -91,7 +108,10 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 		cmdE2EDurationSeconds.WithLabelValues("get", promBR, promBW, promCR, promCW),
 	)
 	defer timer.ObserveDuration()
-	if proxyConf.DStoreConfig.ReadEnable {
+
+	bReadEnable, cReadEnable := c.pswitcher.ReadEnabledOn(key)
+
+	if bReadEnable {
 		totalReqs.WithLabelValues("get", "beansdb").Inc()
 		c.sched = GetScheduler()
 
@@ -129,7 +149,7 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 		return
 	}
 
-	if proxyConf.CassandraStoreCfg.ReadEnable {
+	if cReadEnable {
 		totalReqs.WithLabelValues("get", "cstar").Inc()
 
 		switch key[0] {
@@ -212,18 +232,21 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 		cmdE2EDurationSeconds.WithLabelValues("getm", promBR, promBW, promCR, promCW),
 	)
 	defer timer.ObserveDuration()
-	if proxyConf.DStoreConfig.ReadEnable {
+
+	bkeys, ckeys := c.pswitcher.ReadEnableOnKeys(keys)
+	rs = make(map[string]*mc.Item, len(keys))
+	
+	if len(bkeys) > 0 {
 		totalReqs.WithLabelValues("getm", "beansdb").Inc()
 		c.sched = GetScheduler()
 		var lock sync.Mutex
-		rs = make(map[string]*mc.Item, len(keys))
 
-		gs := c.sched.DivideKeysByBucket(keys)
+		gs := c.sched.DivideKeysByBucket(bkeys)
 		reply := make(chan bool, len(gs))
 		for _, ks := range gs {
 			if len(ks) > 0 {
 				go func(keys []string) {
-					r, t, e := c.getMulti(keys)
+					r, t, e := c.getMulti(bkeys)
 					if e != nil {
 						err = e
 					} else {
@@ -245,12 +268,16 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 		for range gs {
 			<-reply
 		}
-		return
+
+		// keys all stored in bdb
+		if len(ckeys) == 0 {
+			return
+		}
 	}
 
-	if proxyConf.CassandraStoreCfg.ReadEnable {
+	if len(ckeys) > 0 && err == nil {
 		totalReqs.WithLabelValues("getm", "cstar").Inc()
-		rs, err = c.cstar.GetMulti(keys)
+		err = c.cstar.GetMulti(ckeys, rs)
 		return
 	}
 
@@ -264,7 +291,9 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 	)
 	defer timer.ObserveDuration()
 
-	if proxyConf.DStoreConfig.WriteEnable {
+	bWriteEnable, cWriteEnable := c.pswitcher.WriteEnabledOn(key)
+
+	if bWriteEnable {
 		totalReqs.WithLabelValues("set", "beansdb").Inc()
 
 		c.sched = GetScheduler()
@@ -292,8 +321,8 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 		}
 	}
 
-	if proxyConf.CassandraStoreCfg.WriteEnable {
-		if proxyConf.DStoreConfig.WriteEnable && err != nil {
+	if cWriteEnable {
+		if bWriteEnable && err != nil {
 			return
 		}
 		totalReqs.WithLabelValues("set", "cstar").Inc()
@@ -303,10 +332,10 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 		ok, err = c.cstar.Set(key, item)
 		if err != nil {
 			errorReqs.WithLabelValues("set", "cstar").Inc()
-			logger.Errorf("set on c* failed: %s, err: %s", err, key)
+			logger.Errorf("set on c* failed: %s, key: %s", err, key)
 		}
-		if proxyConf.DStoreConfig.WriteEnable && err != nil {
-			logger.Warnf("Set on bdb succ c* failed: %s", key)
+		if bWriteEnable && err != nil {
+			logger.Errorf("Set on bdb succ c* failed: %s", key)
 		}
 	}
 
@@ -426,7 +455,10 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 		cmdE2EDurationSeconds.WithLabelValues("del", promBR, promBW, promCR, promCW),
 	)
 	defer timer.ObserveDuration()
-	if proxyConf.DStoreConfig.WriteEnable {
+
+	bWriteEnable, cWriteEnable := c.pswitcher.WriteEnabledOn(key)
+
+	if bWriteEnable {
 		totalReqs.WithLabelValues("del", "beansdb").Inc()
 		c.sched = GetScheduler()
 		suc := 0
@@ -469,11 +501,11 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 		}
 	}
 
-	if proxyConf.CassandraStoreCfg.WriteEnable {
+	if cWriteEnable {
 		// when dual write we follow the beansdb principle
 		// if bdb write failed we just return and wait for
 		// client to retry that
-		if proxyConf.DStoreConfig.WriteEnable && err != nil {
+		if bWriteEnable && err != nil {
 			return
 		}
 		totalReqs.WithLabelValues("del", "cstar").Inc()
@@ -483,9 +515,9 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 		flag, err = c.cstar.Delete(key)
 		if err != nil {
 			errorReqs.WithLabelValues("del", "cstar").Inc()
-			logger.Errorf("del on c* failed: %s, err: %s", err, key)
+			logger.Errorf("del on c* failed: %s, key: %s", err, key)
 		}
-		if proxyConf.DStoreConfig.WriteEnable && err != nil {
+		if bWriteEnable && err != nil {
 			logger.Warnf("Del on bdb succ but c* failed: %s", key)
 		}
 	}

@@ -125,6 +125,7 @@ func startWeb() {
 		promhttp.HandlerFor(dstore.BdbProxyPromRegistry,
 			promhttp.HandlerOpts{Registry: dstore.BdbProxyPromRegistry}),
 	)
+	http.HandleFunc("/prefix-switcher-reload", handlePrefixStorageSwitch)
 
 	webaddr := fmt.Sprintf("%s:%d", proxyConf.Listen, proxyConf.WebPort)
 	go func() {
@@ -269,4 +270,26 @@ func handleRouteReload(w http.ResponseWriter, r *http.Request) {
 		logger.Infof("scheduler closing when reroute, request: %v", r)
 		oldScheduler.Close()
 	}()
+}
+
+func handlePrefixStorageSwitch(w http.ResponseWriter, r *http.Request) {
+	defer handleWebPanic(w)
+
+	resp := make(map[string]string)
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Use post method for prefix switch cfg reload"))
+		return
+	}
+
+	err := dstore.PrefixStorageSwitcher.LoadCfg(config.Proxy.Confdir)
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		resp["message"] = fmt.Sprintf("load prefix switch at %s err: %s", config.Proxy.Confdir, err)
+	} else {
+		w.WriteHeader(http.StatusOK)
+		resp["message"] = "success"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	handleJson(w, resp)
 }
