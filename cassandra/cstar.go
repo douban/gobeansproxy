@@ -271,6 +271,10 @@ func (c *CassandraStore) GetMeta(key string, extended bool) (*mc.Item, error) {
 	return result, nil
 }
 
+func (c *CassandraStore) GetPrefixTableFinder() *KeyTableFinder {
+	return c.keyTableFinder
+}
+
 func IsValidKeyString(key string) bool {
 	length := len(key)
 	if length == 0 || length > MAX_KEY_LEN {

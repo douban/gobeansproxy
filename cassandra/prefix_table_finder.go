@@ -2,8 +2,13 @@ package cassandra
 
 import (
 	"fmt"
+	"io/ioutil"
+	"path/filepath"
+	"sync"
 
-	"github.com/viant/ptrie"
+	"github.com/acomagu/trie/v2"
+	"gopkg.in/yaml.v3"
+
 	"github.com/douban/gobeansproxy/config"
 )
 
@@ -14,25 +19,34 @@ var (
 )
 
 type KeyTableFinder struct {
-	trie *ptrie.Trie
+	trie *trie.Tree[rune, string]
 	defaultT string
+	lock sync.RWMutex
+}
+
+func getTableTrieFromCfg(config *config.CassandraStoreCfg) trie.Tree[rune, string] {
+	t2k := config.TableToKeyPrefix
+	var ptrie trie.Tree[rune, string]
+	if len(t2k) > 0 {
+		runesKeys := [][]rune{}
+		strValues := []string{}
+    
+		for t, kprefixs := range t2k {
+			for _, prefix := range kprefixs {
+				runesKeys = append(runesKeys, []rune(prefix))
+				strValues = append(strValues, t)
+			}
+		}
+    
+		ptrie = trie.New[rune, string](runesKeys, strValues)
+	}
+	return ptrie
 }
 
 func NewKeyTableFinder(config *config.CassandraStoreCfg) (*KeyTableFinder, error) {
-	t2k := config.TableToKeyPrefix
-	prefixTrie := ptrie.New()
-
-	for t, kprefixs := range t2k {
-		for _, prefix := range kprefixs {
-			err := prefixTrie.Put([]byte(prefix), t)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
 	f := new(KeyTableFinder)
-	f.trie = &prefixTrie
+	t := getTableTrieFromCfg(config)
+	f.trie = &t
 	f.defaultT = config.DefaultTable
 
 	// init sql str
@@ -48,21 +62,39 @@ func NewKeyTableFinder(config *config.CassandraStoreCfg) (*KeyTableFinder, error
 		"delete from %s.%%s where key = ?",
 		config.DefaultKeySpace,
 	)
-	
+
 	return f, nil
 }
 
 func (f *KeyTableFinder) GetTableByKey(key string) string {
-	var result string
-	v := (*(f.trie)).MatchPrefix([]byte(key), func(key []byte, value interface{}) bool {
-		result = value.(string)
-		return true
-	})
-
-	if !v {
+	if f.trie == nil {
 		return f.defaultT
 	}
-	return result
+
+	var v string
+	var match bool
+
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+
+	n := *(f.trie)
+
+	for _, c := range key {
+		if n = n.TraceOne(c); n == nil {
+			break
+		}
+
+		if vv, ok := n.Terminal(); ok {
+			v = vv
+			match = true
+		}
+	}
+
+	if match {
+		return v
+	} else {
+		return f.defaultT
+	}
 }
 
 func (f *KeyTableFinder) GetSqlTpl(sqlType string, key string) string {
@@ -74,4 +106,27 @@ func (f *KeyTableFinder) GetSqlTpl(sqlType string, key string) string {
 	default:
 		return fmt.Sprintf(insertQTpl, f.GetTableByKey(key))
 	}
+}
+
+func (f *KeyTableFinder) LoadCfg(cfgDir string) error {
+	cfg := struct {
+		CassandraCfg config.CassandraStoreCfg `yaml:"cassandra"`
+	}{}
+
+	configF, err := ioutil.ReadFile(filepath.Join(cfgDir, "proxy.yaml"))
+	if err != nil {
+		return err
+	}
+	err = yaml.Unmarshal(configF, &cfg)
+	if err != nil {
+		return err
+	}
+
+	logger.Infof("reloading c* cfg for table finder to: %v", cfg.CassandraCfg.TableToKeyPrefix)
+	pTrie := getTableTrieFromCfg(&cfg.CassandraCfg)
+
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.trie = &pTrie
+	return nil
 }

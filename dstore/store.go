@@ -26,6 +26,7 @@ var (
 	promCR string // enable cstar read
 	promCW string // enable cstar write
 	PrefixStorageSwitcher *cassandra.PrefixSwitcher
+	PrefixTableFinder *cassandra.KeyTableFinder
 )
 
 type Storage struct {
@@ -48,6 +49,7 @@ func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
 		}
 		s.PSwitcher = switcher
 		PrefixStorageSwitcher = switcher
+		PrefixTableFinder = cstar.GetPrefixTableFinder()
 	}
 	promBR = strconv.FormatBool(pCfg.DStoreConfig.ReadEnable)
 	promBW = strconv.FormatBool(pCfg.DStoreConfig.WriteEnable)

@@ -1,2 +1,5 @@
 cqlsh
 
+pytest
+requests
+pyyaml
