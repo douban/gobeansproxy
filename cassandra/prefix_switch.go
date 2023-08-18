@@ -2,10 +2,13 @@ package cassandra
 
 import (
 	"fmt"
+	"io/ioutil"
+	"path/filepath"
 	"sync"
 
+	"github.com/acomagu/trie/v2"
 	"github.com/douban/gobeansproxy/config"
-	"github.com/viant/ptrie"
+	"gopkg.in/yaml.v3"
 )
 
 type PrefixSwitchStatus int
@@ -26,7 +29,7 @@ const (
 )
 
 type PrefixSwitcher struct {
-	trie *ptrie.Trie
+	trie *trie.Tree[rune, PrefixSwitchStatus]
 	defaultT PrefixSwitchStatus
 	lock sync.RWMutex
 }
@@ -46,9 +49,10 @@ func strToSwitchStatus(s string) (PrefixSwitchStatus, error) {
 	}
 }
 
-func GetPrefixSwitchTrieFromCfg(cfg *config.CassandraStoreCfg) (*ptrie.Trie, error) {
+func GetPrefixSwitchTrieFromCfg(cfg *config.CassandraStoreCfg) (*trie.Tree[rune, PrefixSwitchStatus], error) {
 	s2k := cfg.SwitchToKeyPrefixes
-	prefixTrie := ptrie.New()
+	keysString := [][]rune{}
+	vStatus := []PrefixSwitchStatus{}
 
 	for s, kprefixs := range s2k {
 		status, err := strToSwitchStatus(s)
@@ -57,13 +61,13 @@ func GetPrefixSwitchTrieFromCfg(cfg *config.CassandraStoreCfg) (*ptrie.Trie, err
 		}
 
 		for _, prefix := range kprefixs {
-			err := prefixTrie.Put([]byte(prefix), int(status))
-			if err != nil {
-				return nil, err
-			}
+			keysString = append(keysString, []rune(prefix))
+			vStatus = append(vStatus, status)
 		}
 	}
 
+	prefixTrie := trie.New[rune, PrefixSwitchStatus](keysString, vStatus)
+	
 	return &prefixTrie, nil
 }
 
@@ -83,16 +87,27 @@ func (s *PrefixSwitcher) GetStatus(key string) PrefixSwitchStatus {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	var result int
-	v := (*(s.trie)).MatchPrefix([]byte(key), func(key []byte, value interface{}) bool {
-		result = value.(int)
-		return true
-	})
+	var v PrefixSwitchStatus
+	var match bool
 
-	if !v {
+	n := *(s.trie)
+
+	for _, c := range key {
+		if n = n.TraceOne(c); n == nil {
+			break
+		}
+
+		if vv, ok := n.Terminal(); ok {
+			v = vv
+			match = true
+		}
+	}
+
+	if match {
+		return v
+	} else {
 		return s.defaultT
 	}
-	return PrefixSwitchStatus(result)
 }
 
 // check key prefix and return bdb read enable c* read enable
@@ -125,12 +140,24 @@ func (s *PrefixSwitcher) WriteEnabledOn(key string) (bool, bool) {
 }
 
 func (s *PrefixSwitcher) LoadCfg(cfgDir string) error {
-	cfg := config.ProxyConfig{}
-	cfg.InitDefault()
-	cfg.Load(cfgDir)
+	cfg := struct {
+		CassandraCfg config.CassandraStoreCfg `yaml:"cassandra"`
+	}{}
 
-	pTrie, err := GetPrefixSwitchTrieFromCfg(&cfg.CassandraStoreCfg)
+	configF, err := ioutil.ReadFile(filepath.Join(cfgDir, "proxy.yaml"))
 	if err != nil {
+		return err
+	}
+	err = yaml.Unmarshal(configF, &cfg)
+	if err != nil {
+		return err
+	}
+
+	logger.Infof("reloading c* cfg for prefix switch to: %v", cfg.CassandraCfg.SwitchToKeyPrefixes)
+	
+	pTrie, err := GetPrefixSwitchTrieFromCfg(&cfg.CassandraCfg)
+	if err != nil {
+		logger.Errorf("reloading c* cfg err: %s", err)
 		return err
 	}
 

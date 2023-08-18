@@ -125,7 +125,7 @@ func startWeb() {
 		promhttp.HandlerFor(dstore.BdbProxyPromRegistry,
 			promhttp.HandlerOpts{Registry: dstore.BdbProxyPromRegistry}),
 	)
-	http.HandleFunc("/prefix-switcher-reload", handlePrefixStorageSwitch)
+	http.HandleFunc("/cstar-cfg-reload", handleCstarCfgReload)
 
 	webaddr := fmt.Sprintf("%s:%d", proxyConf.Listen, proxyConf.WebPort)
 	go func() {
@@ -272,7 +272,7 @@ func handleRouteReload(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
-func handlePrefixStorageSwitch(w http.ResponseWriter, r *http.Request) {
+func handleCstarCfgReload(w http.ResponseWriter, r *http.Request) {
 	defer handleWebPanic(w)
 
 	resp := make(map[string]string)
@@ -282,7 +282,18 @@ func handlePrefixStorageSwitch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := dstore.PrefixStorageSwitcher.LoadCfg(config.Proxy.Confdir)
+	cfgName := r.URL.Query().Get("config")
+
+	var err error
+	switch cfgName {
+	case "tablefinder":
+		err = dstore.PrefixTableFinder.LoadCfg(config.Proxy.Confdir)
+	case "prefixStorageSwitcher":
+		err = dstore.PrefixStorageSwitcher.LoadCfg(config.Proxy.Confdir)
+	default:
+		err = fmt.Errorf("you must fill config string, support: tablefinder/prefixStorageSwitcher")
+	}
+
 	if err != nil {
 		w.WriteHeader(http.StatusBadGateway)
 		resp["message"] = fmt.Sprintf("load prefix switch at %s err: %s", config.Proxy.Confdir, err)
