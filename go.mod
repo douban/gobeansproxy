@@ -4,7 +4,9 @@ require (
 	github.com/acomagu/trie/v2 v2.0.0
 	github.com/douban/gobeansdb v1.1.2
 	github.com/gocql/gocql v1.5.2
+	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 )

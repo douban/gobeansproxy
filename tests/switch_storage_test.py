@@ -55,6 +55,7 @@ class TestSwitchStorage:
         with open(self.store_proxy_cfg_backup, 'r+') as f:
             with open(store_proxy_cfg, 'w') as o:
                 o.write(f.read())
+        self.trigger_reload()
 
     @pytest.mark.parametrize("test_kv", [
         (1, 1),
@@ -179,6 +180,7 @@ class TestSwitchStorage:
 
                 # ensure we can delete value
                 assert self.client.delete(key), f'stages: {stages} -> stage: {stage} error'
+                assert self.client.get(key) is None, f'stages: {stages} -> stage: {stage} error'
                 assert self.client.set(key, value), f'stages: {stages} -> stage: {stage} error'
                 assert self.client.get(key) == value, f'stages: {stages} -> stage: {stage} error'
 

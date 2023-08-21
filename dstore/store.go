@@ -32,6 +32,7 @@ var (
 type Storage struct {
 	cstar *cassandra.CassandraStore
 	PSwitcher *cassandra.PrefixSwitcher
+	dualWErrHandler *cassandra.DualWriteErrorMgr
 }
 
 func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
@@ -50,6 +51,16 @@ func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
 		s.PSwitcher = switcher
 		PrefixStorageSwitcher = switcher
 		PrefixTableFinder = cstar.GetPrefixTableFinder()
+		dualWErrCfg := pCfg.CassandraStoreCfg.DualWErrCfg
+		dualWErrHandler, err := cassandra.NewDualWErrMgr(
+			&dualWErrCfg,
+			nil,
+		)
+		if err != nil {
+			return err
+		}
+		s.dualWErrHandler = dualWErrHandler
+		logger.Infof("dual write log send to: %s", s.dualWErrHandler.EFile)
 	}
 	promBR = strconv.FormatBool(pCfg.DStoreConfig.ReadEnable)
 	promBW = strconv.FormatBool(pCfg.DStoreConfig.WriteEnable)
@@ -61,7 +72,7 @@ func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
 func (s *Storage) Client() mc.StorageClient {
 	return NewStorageClient(
 		proxyConf.N, proxyConf.W, proxyConf.R,
-		s.cstar, s.PSwitcher,
+		s.cstar, s.PSwitcher, s.dualWErrHandler,
 	)
 }
 
@@ -82,17 +93,23 @@ type StorageClient struct {
 
 	// prefix storage switcher
 	pswitcher *cassandra.PrefixSwitcher
+
+	// dual write error handler
+	dualWErrHandler *cassandra.DualWriteErrorMgr
 }
 
 func NewStorageClient(n int, w int, r int,
 	cstar *cassandra.CassandraStore,
-	pStoreSwitcher *cassandra.PrefixSwitcher) (c *StorageClient) {
+	pStoreSwitcher *cassandra.PrefixSwitcher,
+	dualEHandler *cassandra.DualWriteErrorMgr,
+) (c *StorageClient) {
 	c = new(StorageClient)
 	c.N = n
 	c.W = w
 	c.R = r
 	c.cstar = cstar
 	c.pswitcher = pStoreSwitcher
+	c.dualWErrHandler = dualEHandler
 	return c
 }
 
@@ -331,14 +348,25 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 		if !cassandra.IsValidKeyString(key) {
 			return false, nil
 		}
-		ok, err = c.cstar.Set(key, item)
-		if err != nil {
+		cok, cerr := c.cstar.Set(key, item)
+		if cerr != nil {
 			errorReqs.WithLabelValues("set", "cstar").Inc()
-			logger.Errorf("set on c* failed: %s, key: %s", err, key)
+			logger.Errorf("set on c* failed: %s, key: %s", cerr, key)
+
+			// we only care c* dual write error only when bdb read enabled
+			// brwcw -> return bdb result c* error just add to err log
+			// bwcrw -> return c* error as final error, if bdb write err, c* write will not exec
+			if bWriteEnable {
+				errorReqs.WithLabelValues("set", "bcdual").Inc()
+				c.dualWErrHandler.HandleErr(key, "set", cerr)
+
+				br, _ := c.pswitcher.ReadEnabledOn(key)
+				if br {
+					return
+				}
+			}
 		}
-		if bWriteEnable && err != nil {
-			logger.Errorf("Set on bdb succ c* failed: %s", key)
-		}
+		return cok, cerr
 	}
 
 	return
@@ -514,14 +542,21 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 		if !cassandra.IsValidKeyString(key) {
 			return false, nil
 		}
-		flag, err = c.cstar.Delete(key)
-		if err != nil {
+		cflag, cerr := c.cstar.Delete(key)
+		if cerr != nil {
 			errorReqs.WithLabelValues("del", "cstar").Inc()
-			logger.Errorf("del on c* failed: %s, key: %s", err, key)
+			logger.Errorf("del on c* failed: %s, key: %s", cerr, key)
+			if bWriteEnable {
+				errorReqs.WithLabelValues("del", "bcdual").Inc()
+				c.dualWErrHandler.HandleErr(key, "del", cerr)
+
+				br, _ := c.pswitcher.ReadEnabledOn(key)
+				if br {
+					return
+				}
+			}
 		}
-		if bWriteEnable && err != nil {
-			logger.Warnf("Del on bdb succ but c* failed: %s", key)
-		}
+		return cflag, cerr
 	}
 
 	return

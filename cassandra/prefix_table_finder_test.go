@@ -1,6 +1,7 @@
 package cassandra
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/douban/gobeansproxy/config"
@@ -45,8 +46,6 @@ func TestKeyTableFinder(t *testing.T) {
 			t.Fatalf("%s table find err, should be: %s", k, v)
 		}
 	}
-
-	
 }
 
 func BenchmarkKeyTableFinder(b *testing.B) {
@@ -56,6 +55,10 @@ func BenchmarkKeyTableFinder(b *testing.B) {
 	}
 
 	for n := 0; n < b.N; n++ {
-		f.GetTableByKey("send_me_to_misc_table")
+		k := fmt.Sprintf("send_me_toMisc_%d", n)
+		m := f.GetTableByKey(k)
+		if m != "misc" {
+			panic(fmt.Sprintf("expect misc but got: %s, key: %s", m, k))
+		}
 	}
 }

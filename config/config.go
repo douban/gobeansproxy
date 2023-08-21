@@ -44,6 +44,16 @@ type DStoreConfig struct {
 	ReadEnable          bool    `yaml:"enable_read"`
 }
 
+type DualWErrCfg struct {
+	DumpToDir string `yaml:"dump_to_dir"`
+	FName string `yaml:"log_file_name"`
+	LoggerLevel string `yaml:"logger_level"`
+	RotateSize int `yaml:"rotate_size_mb"`
+	Compress bool `yaml:"compress"`
+	MaxAges int `yaml:"max_ages"`
+	MaxBackups int `yaml:"max_backups"`
+}
+
 type CassandraStoreCfg struct {
 	ReadEnable bool `yaml:"enable_read"`
 	WriteEnable bool `yaml:"enable_write"`
@@ -64,6 +74,7 @@ type CassandraStoreCfg struct {
 	Consistency string  `yaml:"consistency,omitempty"`
 	TableToKeyPrefix map[string][]string `yaml:"table_to_keyprefix"`
 	SwitchToKeyPrefixes map[string][]string `yaml:"switch_to_keyprefixes"`
+	DualWErrCfg DualWErrCfg `yaml:"dual_write_err_cfg"`
 }
 
 func (c *ProxyConfig) InitDefault() {
