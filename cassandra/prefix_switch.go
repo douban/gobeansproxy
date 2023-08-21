@@ -53,6 +53,7 @@ func GetPrefixSwitchTrieFromCfg(cfg *config.CassandraStoreCfg) (*trie.Tree[rune,
 	s2k := cfg.SwitchToKeyPrefixes
 	keysString := [][]rune{}
 	vStatus := []PrefixSwitchStatus{}
+	dedup := map[string]struct{}{}
 
 	for s, kprefixs := range s2k {
 		status, err := strToSwitchStatus(s)
@@ -63,6 +64,12 @@ func GetPrefixSwitchTrieFromCfg(cfg *config.CassandraStoreCfg) (*trie.Tree[rune,
 		for _, prefix := range kprefixs {
 			keysString = append(keysString, []rune(prefix))
 			vStatus = append(vStatus, status)
+			if _, ok := dedup[prefix]; !ok {
+				dedup[prefix] = struct{}{}
+			} else {
+				// prefix can map to only one status
+				return nil, fmt.Errorf("%s prefix duplicate in settings", prefix)
+			}
 		}
 	}
 
