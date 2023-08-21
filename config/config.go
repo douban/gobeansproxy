@@ -74,6 +74,7 @@ type CassandraStoreCfg struct {
 	Consistency string  `yaml:"consistency,omitempty"`
 	TableToKeyPrefix map[string][]string `yaml:"table_to_keyprefix"`
 	SwitchToKeyPrefixes map[string][]string `yaml:"switch_to_keyprefixes"`
+	SwitchToKeyDefault string `yaml:"default_storage"`
 	DualWErrCfg DualWErrCfg `yaml:"dual_write_err_cfg"`
 }
 

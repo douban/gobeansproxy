@@ -86,7 +86,13 @@ func NewPrefixSwitcher(config *config.CassandraStoreCfg) (*PrefixSwitcher, error
 
 	f := new(PrefixSwitcher)
 	f.trie = prefixTrie
-	f.defaultT = PrefixSwitchBrw
+
+	defaultS, err := strToSwitchStatus(config.SwitchToKeyDefault)
+	if err != nil {
+		return nil, err
+	}
+
+	f.defaultT = defaultS
 	return f, nil
 }
 
@@ -160,16 +166,23 @@ func (s *PrefixSwitcher) LoadCfg(cfgDir string) error {
 		return err
 	}
 
-	logger.Infof("reloading c* cfg for prefix switch to: %v", cfg.CassandraCfg.SwitchToKeyPrefixes)
-	
 	pTrie, err := GetPrefixSwitchTrieFromCfg(&cfg.CassandraCfg)
 	if err != nil {
 		logger.Errorf("reloading c* cfg err: %s", err)
 		return err
 	}
+	logger.Infof("reloading c* cfg for prefix switch to: %v", cfg.CassandraCfg.SwitchToKeyPrefixes)
+
+	defaultS, err := strToSwitchStatus(cfg.CassandraCfg.SwitchToKeyDefault)
+	if err != nil {
+		logger.Errorf("default switch storage parse err: %s", err)
+	}
+	logger.Infof("reloading c* cfg for prefix default store to: %s", cfg.CassandraCfg.SwitchToKeyDefault)
+	
 
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.trie = pTrie
+	s.defaultT = defaultS
 	return nil
 }
