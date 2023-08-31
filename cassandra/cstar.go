@@ -191,7 +191,7 @@ func (c *CassandraStore) SetWithValue(key string, v *BDBValue) (ok bool, err err
 		logger.Debugf("Set key %s err: %s", key, err)
 		return false, err
 	}
-	
+
 	return true, nil
 }
 
