@@ -26,7 +26,7 @@ type KeyTableFinder struct {
 
 func getTableTrieFromCfg(config *config.CassandraStoreCfg) (*trie.Tree[rune, string], error) {
 	t2k := config.TableToKeyPrefix
-	var ptrie trie.Tree[rune, string]
+	var ptrie *trie.Tree[rune, string]
 
 	dedup := map[string]struct{}{}
 
@@ -46,10 +46,11 @@ func getTableTrieFromCfg(config *config.CassandraStoreCfg) (*trie.Tree[rune, str
 				}
 			}
 		}
-    
-		ptrie = trie.New[rune, string](runesKeys, strValues)
+
+		tr := trie.New[rune, string](runesKeys, strValues)
+		ptrie = &tr
 	}
-	return &ptrie, nil
+	return ptrie, nil
 }
 
 func NewKeyTableFinder(config *config.CassandraStoreCfg) (*KeyTableFinder, error) {

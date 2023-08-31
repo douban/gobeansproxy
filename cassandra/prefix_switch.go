@@ -51,31 +51,37 @@ func strToSwitchStatus(s string) (PrefixSwitchStatus, error) {
 
 func GetPrefixSwitchTrieFromCfg(cfg *config.CassandraStoreCfg) (*trie.Tree[rune, PrefixSwitchStatus], error) {
 	s2k := cfg.SwitchToKeyPrefixes
-	keysString := [][]rune{}
-	vStatus := []PrefixSwitchStatus{}
-	dedup := map[string]struct{}{}
 
-	for s, kprefixs := range s2k {
-		status, err := strToSwitchStatus(s)
-		if err != nil {
-			return nil, err
-		}
+	var prefixTrie *trie.Tree[rune, PrefixSwitchStatus]
 
-		for _, prefix := range kprefixs {
-			keysString = append(keysString, []rune(prefix))
-			vStatus = append(vStatus, status)
-			if _, ok := dedup[prefix]; !ok {
-				dedup[prefix] = struct{}{}
-			} else {
-				// prefix can map to only one status
-				return nil, fmt.Errorf("%s prefix duplicate in settings", prefix)
+	if len(s2k) > 0 {
+		keysString := [][]rune{}
+		vStatus := []PrefixSwitchStatus{}
+		dedup := map[string]struct{}{}
+
+		for s, kprefixs := range s2k {
+			status, err := strToSwitchStatus(s)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, prefix := range kprefixs {
+				keysString = append(keysString, []rune(prefix))
+				vStatus = append(vStatus, status)
+				if _, ok := dedup[prefix]; !ok {
+					dedup[prefix] = struct{}{}
+				} else {
+					// prefix can map to only one status
+					return nil, fmt.Errorf("%s prefix duplicate in settings", prefix)
+				}
 			}
 		}
+
+		tr := trie.New[rune, PrefixSwitchStatus](keysString, vStatus)
+		prefixTrie = &tr
 	}
 
-	prefixTrie := trie.New[rune, PrefixSwitchStatus](keysString, vStatus)
-	
-	return &prefixTrie, nil
+	return prefixTrie, nil
 }
 
 func NewPrefixSwitcher(config *config.CassandraStoreCfg) (*PrefixSwitcher, error) {
@@ -99,6 +105,10 @@ func NewPrefixSwitcher(config *config.CassandraStoreCfg) (*PrefixSwitcher, error
 func (s *PrefixSwitcher) GetStatus(key string) PrefixSwitchStatus {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
+
+	if s.trie == nil {
+		return s.defaultT
+	}
 
 	var v PrefixSwitchStatus
 	var match bool
