@@ -304,7 +304,9 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 }
 
 func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {
-	defer item.Free()
+	defer func() {
+		item.Free()
+	}()
 	timer := prometheus.NewTimer(
 		cmdE2EDurationSeconds.WithLabelValues("set", promBR, promBW, promCR, promCW),
 	)
