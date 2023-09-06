@@ -26,7 +26,7 @@ func NewBDBValue(item *mc.Item) *BDBValue {
 	}
 }
 
-func (b *BDBValue) ToMCItem() *mc.Item {
+func (b *BDBValue) ToMCItem() (*mc.Item, error) {
 	item := &mc.Item{
 		ReceiveTime: b.ReceiveTime,
 		Flag: b.Flag,
@@ -36,9 +36,10 @@ func (b *BDBValue) ToMCItem() *mc.Item {
 	ok := item.Alloc(len(b.Body))
 	if !ok {
 		logger.Errorf("Alloc mem err for len %d", len(b.Body))
+		return nil, fmt.Errorf("alloc mem error")
 	}
 	copy(item.CArray.Body, b.Body)
-	return item
+	return item, nil
 }
 
 func (b BDBValue) MarshalUDT(name string, info gocql.TypeInfo) ([]byte, error) {

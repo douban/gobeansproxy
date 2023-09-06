@@ -130,7 +130,11 @@ func (c *CassandraStore) Get(key string) (*mc.Item, error) {
 	if err != nil {
 		return nil, err
 	} else {
-		return value.ToMCItem(), nil
+		item, err := value.ToMCItem()
+		if err != nil {
+			return nil, err
+		}
+		return item, nil
 	}
 }
 
