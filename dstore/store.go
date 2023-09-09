@@ -264,13 +264,15 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 		reply := make(chan bool, len(gs))
 		for _, ks := range gs {
 			if len(ks) > 0 {
-				go func(keys []string) {
-					r, t, e := c.getMulti(bkeys)
+				go func(gkeys []string) {
+					r, t, e := c.getMulti(gkeys)
 					if e != nil {
 						err = e
 					} else {
 						for k, v := range r {
 							lock.Lock()
+							// k should ALWAYS not exist in rs
+							// otherwise there would be a memory leak
 							rs[k] = v
 							c.SuccessedTargets = append(c.SuccessedTargets, t...)
 							lock.Unlock()
@@ -288,7 +290,7 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 			<-reply
 		}
 
-		// keys all stored in bdb
+		// keys all find in bdb
 		if len(ckeys) == 0 {
 			return
 		}
@@ -297,16 +299,12 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 	if len(ckeys) > 0 && err == nil {
 		totalReqs.WithLabelValues("getm", "cstar").Inc()
 		err = c.cstar.GetMulti(ckeys, rs)
-		return
 	}
-
-	return nil, fmt.Errorf("You must enable at least one read engine for get multi")
+	return
 }
 
 func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {
-	defer func() {
-		item.Free()
-	}()
+	defer item.Free()
 	timer := prometheus.NewTimer(
 		cmdE2EDurationSeconds.WithLabelValues("set", promBR, promBW, promCR, promCW),
 	)

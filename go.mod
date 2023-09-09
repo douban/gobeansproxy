@@ -2,7 +2,7 @@ module github.com/douban/gobeansproxy
 
 require (
 	github.com/acomagu/trie/v2 v2.0.0
-	github.com/douban/gobeansdb v1.1.2
+	github.com/douban/gobeansdb v1.1.3
 	github.com/gocql/gocql v1.5.2
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.0
