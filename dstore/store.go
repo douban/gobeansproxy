@@ -27,6 +27,7 @@ var (
 	promCW string // enable cstar write
 	PrefixStorageSwitcher *cassandra.PrefixSwitcher
 	PrefixTableFinder *cassandra.KeyTableFinder
+	CqlStore *cassandra.CassandraStore
 )
 
 type Storage struct {
@@ -44,13 +45,14 @@ func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
 
 		s.cstar = cstar
 
-		switcher, err := cassandra.NewPrefixSwitcher(&proxyConf.CassandraStoreCfg)
+		switcher, err := cassandra.NewPrefixSwitcher(&proxyConf.CassandraStoreCfg, cstar)
 		if err != nil {
 			return err
 		}
 		s.PSwitcher = switcher
 		PrefixStorageSwitcher = switcher
 		PrefixTableFinder = cstar.GetPrefixTableFinder()
+		CqlStore = cstar
 		dualWErrCfg := pCfg.CassandraStoreCfg.DualWErrCfg
 		dualWErrHandler, err := cassandra.NewDualWErrMgr(
 			&dualWErrCfg,
@@ -96,6 +98,9 @@ type StorageClient struct {
 
 	// dual write error handler
 	dualWErrHandler *cassandra.DualWriteErrorMgr
+
+	// proxy hostname cstar cluster name
+	proxyHostName, cstarClusterName string
 }
 
 func NewStorageClient(n int, w int, r int,
@@ -110,10 +115,17 @@ func NewStorageClient(n int, w int, r int,
 	c.cstar = cstar
 	c.pswitcher = pStoreSwitcher
 	c.dualWErrHandler = dualEHandler
+	c.proxyHostName = fmt.Sprintf("%s:%d", proxyConf.Hostname, proxyConf.Port)
+	c.cstarClusterName = c.cstar.ClusterName
 	return c
 }
 
 func (c *StorageClient) GetSuccessedTargets() []string {
+	if len(c.SuccessedTargets) == 0 {
+		c.SuccessedTargets = append(c.SuccessedTargets, "NoWhere", c.proxyHostName)
+	} else {
+		c.SuccessedTargets = append(c.SuccessedTargets, c.proxyHostName)
+	}
 	return c.SuccessedTargets
 }
 
@@ -187,11 +199,17 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 					return nil, nil
 				}
 			}
-			return c.cstar.GetMeta(key, extended)
+			item, err = c.cstar.GetMeta(key, extended)
 		default:
-			
-			return c.cstar.Get(key)
+			item, err = c.cstar.Get(key)
 		}
+
+		if err == nil {
+			c.SuccessedTargets = []string{c.cstarClusterName}
+		} else {
+			errorReqs.WithLabelValues("get", "cstar").Inc()
+		}
+		return item, err
 	}
 
 	return nil, fmt.Errorf("You must enable at least one read engine for get")
@@ -299,6 +317,9 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 	if len(ckeys) > 0 && err == nil {
 		totalReqs.WithLabelValues("getm", "cstar").Inc()
 		err = c.cstar.GetMulti(ckeys, rs)
+		if err == nil {
+			c.SuccessedTargets = []string{c.cstarClusterName}
+		}
 	}
 	return
 }
@@ -310,7 +331,8 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 	)
 	defer timer.ObserveDuration()
 
-	bWriteEnable, cWriteEnable := c.pswitcher.WriteEnabledOn(key)
+	rwStatus := c.pswitcher.GetStatus(key)
+	bWriteEnable, cWriteEnable := rwStatus.IsWriteOnBeansdb(), rwStatus.IsWriteOnCstar()
 
 	if bWriteEnable {
 		totalReqs.WithLabelValues("set", "beansdb").Inc()
@@ -341,13 +363,18 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 	}
 
 	if cWriteEnable {
+		// beansdb write error cstar just return
 		if bWriteEnable && err != nil {
-			return
+			return ok, err
 		}
+
 		totalReqs.WithLabelValues("set", "cstar").Inc()
-		if !cassandra.IsValidKeyString(key) {
-			return false, nil
+
+		// beansdb write succ means this is a legit key
+		if !bWriteEnable && !cassandra.IsValidKeyString(key) {
+			return false, fmt.Errorf("Key format invalid")
 		}
+
 		cok, cerr := c.cstar.Set(key, item)
 		if cerr != nil {
 			errorReqs.WithLabelValues("set", "cstar").Inc()
@@ -360,16 +387,16 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 				errorReqs.WithLabelValues("set", "bcdual").Inc()
 				c.dualWErrHandler.HandleErr(key, "set", cerr)
 
-				br, _ := c.pswitcher.ReadEnabledOn(key)
-				if br {
-					return
+				if rwStatus.IsReadOnBeansdb() {
+					return ok, err
 				}
 			}
 		}
+		c.SuccessedTargets = []string{c.cstarClusterName}
 		return cok, cerr
 	}
 
-	return
+	return ok, err
 }
 
 // cmdReturnType 只在 setConcurrently 函数中使用，
@@ -486,7 +513,8 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 	)
 	defer timer.ObserveDuration()
 
-	bWriteEnable, cWriteEnable := c.pswitcher.WriteEnabledOn(key)
+	rwStatus := c.pswitcher.GetStatus(key)
+	bWriteEnable, cWriteEnable := rwStatus.IsWriteOnBeansdb(), rwStatus.IsWriteOnCstar()
 
 	if bWriteEnable {
 		totalReqs.WithLabelValues("del", "beansdb").Inc()
@@ -540,7 +568,7 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 		}
 		totalReqs.WithLabelValues("del", "cstar").Inc()
 		if !cassandra.IsValidKeyString(key) {
-			return false, nil
+			return false, fmt.Errorf("invalide key format")
 		}
 		cflag, cerr := c.cstar.Delete(key)
 		if cerr != nil {
@@ -550,12 +578,12 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 				errorReqs.WithLabelValues("del", "bcdual").Inc()
 				c.dualWErrHandler.HandleErr(key, "del", cerr)
 
-				br, _ := c.pswitcher.ReadEnabledOn(key)
-				if br {
+				if rwStatus.IsReadOnBeansdb() {
 					return
 				}
 			}
 		}
+		c.SuccessedTargets = []string{c.cstarClusterName}
 		return cflag, cerr
 	}
 

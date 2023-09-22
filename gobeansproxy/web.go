@@ -3,6 +3,7 @@ package gobeansproxy
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
 	"path/filepath"
@@ -18,6 +19,8 @@ import (
 	"github.com/douban/gobeansdb/utils"
 	"github.com/douban/gobeansproxy/config"
 	"github.com/douban/gobeansproxy/dstore"
+	"github.com/douban/gobeansproxy/cassandra"
+
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	yaml "gopkg.in/yaml.v2"
@@ -55,6 +58,7 @@ func handleJson(w http.ResponseWriter, v interface{}) {
 		w.Write(b)
 	}
 }
+
 
 type templateHandler struct {
 	once     sync.Once
@@ -125,7 +129,7 @@ func startWeb() {
 		promhttp.HandlerFor(dstore.BdbProxyPromRegistry,
 			promhttp.HandlerOpts{Registry: dstore.BdbProxyPromRegistry}),
 	)
-	http.HandleFunc("/cstar-cfg-reload", handleCstarCfgReload)
+	http.HandleFunc("/cstar-cfg", handleCstarCfgReload)
 
 	webaddr := fmt.Sprintf("%s:%d", proxyConf.Listen, proxyConf.WebPort)
 	go func() {
@@ -276,27 +280,128 @@ func handleCstarCfgReload(w http.ResponseWriter, r *http.Request) {
 	defer handleWebPanic(w)
 
 	resp := make(map[string]string)
-	if r.Method != "POST" {
+	cfgName := r.URL.Query().Get("config")
+	var dispatcher cassandra.PrefixDisPatcher
+
+	switch cfgName {
+	case "tablefinder":
+		dispatcher = dstore.PrefixTableFinder
+	case "rwswitcher":
+		dispatcher = dstore.PrefixStorageSwitcher
+	default:
+		resp["error"] = "unsupported config query arg, must be: tablefinder/rwswitcher"
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Use post method for prefix switch cfg reload"))
+		handleJson(w, resp)
 		return
 	}
 
-	cfgName := r.URL.Query().Get("config")
+	switch r.Method {
+	case "GET":
+		c, err := json.Marshal(dispatcher.GetCurrentMap())
+		if err != nil {
+			resp["error"] = fmt.Sprintf("get cfg err: %s", err)
+		} else {
+			resp["cfg"] = string(c)
+			resp["message"] = "ok"
+		}
+	case "POST":
+		staticCfg, err := dispatcher.LoadStaticCfg(config.Proxy.Confdir)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("load static cfg err: %s", err)
+			break
+		}
 
-	var err error
-	switch cfgName {
-	case "tablefinder":
-		err = dstore.PrefixTableFinder.LoadCfg(config.Proxy.Confdir)
-	case "prefixStorageSwitcher":
-		err = dstore.PrefixStorageSwitcher.LoadCfg(config.Proxy.Confdir)
+		err = dispatcher.LoadCfg(staticCfg, dstore.CqlStore)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("load cfg from db err: %s", err)
+			break
+		}
+		resp["message"] = "ok"
+	case "PUT":
+		// load cfg static
+		staticCfg, err := dispatcher.LoadStaticCfg(config.Proxy.Confdir)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("load static cfg err: %s", err)
+			break
+		}
+
+		// upsert new data to db
+		b, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("get body from req err: %s", err)
+			break
+		}
+		defer r.Body.Close()
+		var data map[string](map[string][]string)
+		err = json.Unmarshal(b, &data)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("parse req err: %s", err)
+			break
+		}
+		pdata, ok := data["prefix"]
+		if !ok {
+			resp["error"] = fmt.Sprintf("parse req err: doesn't match {'prefix': {'<dispatch_to>': ['prefix1', 'prefix2']}}")
+			break
+		}
+		err = dispatcher.Upsert(staticCfg, pdata, dstore.CqlStore)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("upsert data %v err: %s", data, err)
+			break
+		}
+
+		// require load cfg actually
+		err = dispatcher.LoadCfg(staticCfg, dstore.CqlStore)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("load cfg to server err: %s", err)
+			break
+		}
+	case "DELETE":
+		// load cfg static
+		staticCfg, err := dispatcher.LoadStaticCfg(config.Proxy.Confdir)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("load static cfg err: %s", err)
+			break
+		}
+
+		// upsert new data to db
+		b, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("get body from req err: %s", err)
+			break
+		}
+		defer r.Body.Close()
+		var data map[string]string
+		err = json.Unmarshal(b, &data)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("parse req err: %s", err)
+			break
+		}
+
+		prefix, ok := data["prefix"]
+		if !ok {
+			resp["error"] = fmt.Sprintf("req data should like: {'prefix': <your data>}")
+			break
+		}
+		err = dispatcher.DeletePrefix(staticCfg, prefix, dstore.CqlStore)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("upsert data %v err: %s", data, err)
+			break
+		}
+
+		// require load cfg actually
+		err = dispatcher.LoadCfg(staticCfg, dstore.CqlStore)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("load cfg to server err: %s", err)
+			break
+		}
 	default:
-		err = fmt.Errorf("you must fill config string, support: tablefinder/prefixStorageSwitcher")
+		w.WriteHeader(http.StatusBadRequest)
+		resp["error"] = "unsupported method"
 	}
 
-	if err != nil {
+	
+	if _, ok := resp["error"]; ok {
 		w.WriteHeader(http.StatusBadGateway)
-		resp["message"] = fmt.Sprintf("load prefix switch at %s err: %s", config.Proxy.Confdir, err)
 	} else {
 		w.WriteHeader(http.StatusOK)
 		resp["message"] = "success"

@@ -34,9 +34,6 @@ dstore:
 cassandra:
   default_key_space: dbname
   default_table: tablename
-  table_to_keyprefix:
-    table:
-      - "prefix1"
   enable_read: true
   enable_write: true
   hosts:
@@ -53,3 +50,42 @@ cassandra:
   # please use password_file in prod env
   password: ""
   password_file: ""
+  # local_one only for test usage
+  # default: quorum
+  # consistency: "local_one"
+  prefix_table_dispatcher_cfg:
+    # if not enable will use default keyspace and table
+    enable: false
+    static:
+      # dispatch prefix1 key to table table_name1
+      table_name1:
+        - "prefix1"
+    cfg_table: cassandra_cfg_table_name
+    cfg_keyspace: cassandra_cfg_keyspace
+  prefix_rw_dispatcher_cfg:
+    enable: true
+    static:
+      # dispatch prefix /test_prefix_c/ to dual write
+      br1w1cr0w1:
+        - "/test_prefix_c/"
+        - "/test_prefix_d/"
+      br0w0cr1w1:
+        - "test_"
+    cfg_table: cassandra_cfg_table_name
+    cfg_keyspace: cassandra_cfg_keyspace
+  # if not match rw dispatcher config
+  # will fallback to this default storage rw cfg
+  # br1w1cr0w0: only use beansdb as backend
+  # br1w1cr0w1: dual write and read from beansdb
+  # br0w1cr1w1: dual write and read from c*
+  # br0w0cr1w1: only use c* for rw backend
+  default_storage: "br1w1cr0w0"
+  # dual write error log config
+  dual_write_err_cfg:
+    dump_to_dir: /var/gobeansproxy/log/
+    log_file_name: dual_write_err.log
+    logger_level: "INFO"
+    rotate_size_mb: 100
+    compress: true
+    max_ages: 7
+    max_backups: 100

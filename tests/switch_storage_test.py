@@ -37,7 +37,7 @@ class TestSwitchStorage:
         self.prefix = "/__test_proxy/"
         self.prefix_wont_switch = "/__test_proxy_no_switch/"
         self.key_max = 100
-        self.web_addr = store_api or "http://localhost:47910/cstar-cfg-reload?config=prefixStorageSwitcher"
+        self.web_addr = store_api or "http://localhost:47910/cstar-cfg?config=rwswitcher"
         self.web_req = requests.Session()
         self.store_proxy_cfg_backup = store_proxy_cfg + '.backup'
         # copy cfg bak
@@ -103,26 +103,51 @@ class TestSwitchStorage:
 
     def trigger_reload(self):
         resp = self.web_req.post(self.web_addr)
-        resp.raise_for_status()
-        assert resp.json()['message'] == "success"
+        assert resp.json().get('message') == "success", 'failed, resp: {}'.format(resp.json())
 
-    def switch_store(self, switch_to):
+    def update_rw_dispatch_cfg(self, switch_to, prefixes):
+        data = {
+            "prefix": {
+                switch_to: prefixes
+            }
+        }
+        resp = self.web_req.put(self.web_addr, json=data)
+        assert 'error' not in resp.json()
+
+    def clean_rw_dispatch_cfg(self, prefix):
+        data = {
+            "prefix": prefix
+        }
+        resp = self.web_req.delete(self.web_addr, json=data)
+        assert 'error' not in resp.json()
+        
+    def switch_store(self, switch_to, use_static_cfg=True):
         assert switch_to in (p_status_brw, p_status_brw_cw,
                              p_status_bw_crw, p_status_crw)
         if self.status == switch_to:
             return
 
+        self.clean_rw_dispatch_cfg(self.prefix)
         with open(store_proxy_cfg, 'r+') as f:
             data = load(f, Loader=Loader)
-            data['cassandra']['switch_to_keyprefixes'] = {
-                switch_to: [self.prefix]
-            }
+            if use_static_cfg:
+                scfg = {switch_to: [self.prefix]}
+            else:
+                # we should clean static cfg cause this will
+                # conflict with our db cfg items
+                scfg = {}
 
+            data['cassandra']['prefix_rw_dispatcher_cfg']['static'] = scfg
+                
             f.seek(0, 0)
             f.truncate()
 
             f.write(dump(data, Dumper=Dumper))
-        self.trigger_reload()
+        if use_static_cfg:
+            self.trigger_reload()
+        else:
+            # using put api for cfg update
+            self.update_rw_dispatch_cfg(switch_to, [self.prefix])
         self.status = switch_to
 
     def test_switch_store(self):
@@ -156,33 +181,34 @@ class TestSwitchStorage:
         assert self.client.set(key, value)
         assert self.client.set(no_switch_key, no_switch_value)
 
-        for stages in switch_to:
-            last_stage = None
-            for idx, stage in enumerate(stages):
-                last_stage = self.status
-                self.switch_store(stage)
+        for use_static_cfg in (True, False):
+            for stages in switch_to:
+                last_stage = None
+                for idx, stage in enumerate(stages):
+                    last_stage = self.status
+                    self.switch_store(stage, use_static_cfg)
 
-                # ensure we can still get values
-                # when  change from crw -> other br status this is not going to equal
-                if stage in (p_status_brw, p_status_brw_cw) and last_stage == p_status_crw:
-                    assert self.client.get(key) != value, f'stages: {stages} -> stage: {stage} error'
-                else:
+                    # ensure we can still get values
+                    # when  change from crw -> other br status this is not going to equal
+                    if stage in (p_status_brw, p_status_brw_cw) and last_stage == p_status_crw:
+                        assert self.client.get(key) != value, f'stages: {stages} -> stage: {stage} error'
+                    else:
+                        assert self.client.get(key) == value, f'stages: {stages} -> stage: {stage} error'
+                        assert self.client.get(no_switch_key) == no_switch_value, f'stages: {stages} -> stage: {stage} error'
+
+                    # ensure we can set to new value
+                    value = f'value_on_{stage}'
+                    assert self.client.set(key, value), f'stages: {stages} -> stage: {stage} error'
                     assert self.client.get(key) == value, f'stages: {stages} -> stage: {stage} error'
+                    no_switch_value = f'static_on_{stage}'
+                    assert self.client.set(no_switch_key, no_switch_value), f'stages: {stages} -> stage: {stage} error'
                     assert self.client.get(no_switch_key) == no_switch_value, f'stages: {stages} -> stage: {stage} error'
-                
-                # ensure we can set to new value
-                value = f'value_on_{stage}'
-                assert self.client.set(key, value), f'stages: {stages} -> stage: {stage} error'
-                assert self.client.get(key) == value, f'stages: {stages} -> stage: {stage} error'
-                no_switch_value = f'static_on_{stage}'
-                assert self.client.set(no_switch_key, no_switch_value), f'stages: {stages} -> stage: {stage} error'
-                assert self.client.get(no_switch_key) == no_switch_value, f'stages: {stages} -> stage: {stage} error'
 
-                # ensure we can delete value
-                assert self.client.delete(key), f'stages: {stages} -> stage: {stage} error'
-                assert self.client.get(key) is None, f'stages: {stages} -> stage: {stage} error'
-                assert self.client.set(key, value), f'stages: {stages} -> stage: {stage} error'
-                assert self.client.get(key) == value, f'stages: {stages} -> stage: {stage} error'
+                    # ensure we can delete value
+                    assert self.client.delete(key), f'stages: {stages} -> stage: {stage} error'
+                    assert self.client.get(key) is None, f'stages: {stages} -> stage: {stage} error'
+                    assert self.client.set(key, value), f'stages: {stages} -> stage: {stage} error'
+                    assert self.client.get(key) == value, f'stages: {stages} -> stage: {stage} error'
 
         self.switch_store(p_status_brw)
         assert self.client.delete(key), f'stages: {stages} -> stage: {stage} error'
