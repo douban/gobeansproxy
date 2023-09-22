@@ -205,7 +205,7 @@ func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 		}
 
 		if err == nil {
-			c.SuccessedTargets = []string{c.cstarClusterName}
+			c.SuccessedTargets = append(c.SuccessedTargets, c.cstarClusterName)
 		} else {
 			errorReqs.WithLabelValues("get", "cstar").Inc()
 		}
@@ -318,7 +318,7 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 		totalReqs.WithLabelValues("getm", "cstar").Inc()
 		err = c.cstar.GetMulti(ckeys, rs)
 		if err == nil {
-			c.SuccessedTargets = []string{c.cstarClusterName}
+			c.SuccessedTargets = append(c.SuccessedTargets, c.cstarClusterName)
 		}
 	}
 	return
@@ -392,7 +392,7 @@ func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, e
 				}
 			}
 		}
-		c.SuccessedTargets = []string{c.cstarClusterName}
+		c.SuccessedTargets = append(c.SuccessedTargets, c.cstarClusterName)
 		return cok, cerr
 	}
 
@@ -583,7 +583,7 @@ func (c *StorageClient) Delete(key string) (flag bool, err error) {
 				}
 			}
 		}
-		c.SuccessedTargets = []string{c.cstarClusterName}
+		c.SuccessedTargets = append(c.SuccessedTargets, c.cstarClusterName)
 		return cflag, cerr
 	}
 
