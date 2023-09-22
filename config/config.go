@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	Version = "v2.0.1-rc3"
+	Version = "v2.0.2-rc1"
 )
 
 var (
@@ -54,6 +54,13 @@ type DualWErrCfg struct {
 	MaxBackups int `yaml:"max_backups"`
 }
 
+type PrefixDisPatcherCfg struct {
+	StaticCfg map[string][]string `yaml:"static"`
+	CfgFromCstarTable string `yaml:"cfg_table"`
+	CfgFromCstarKeySpace string `yaml:"cfg_keyspace"`
+	Enable bool `yaml:"enable"`
+}
+
 type CassandraStoreCfg struct {
 	ReadEnable bool `yaml:"enable_read"`
 	WriteEnable bool `yaml:"enable_write"`
@@ -72,8 +79,8 @@ type CassandraStoreCfg struct {
 	Password string `yaml:"password"`
 	PasswordFile string `yaml:"password_file"`
 	Consistency string  `yaml:"consistency,omitempty"`
-	TableToKeyPrefix map[string][]string `yaml:"table_to_keyprefix"`
-	SwitchToKeyPrefixes map[string][]string `yaml:"switch_to_keyprefixes"`
+	PrefixTableDispatcherCfg PrefixDisPatcherCfg `yaml:"prefix_table_dispatcher_cfg"`
+	PrefixRWDispatcherCfg PrefixDisPatcherCfg `yaml:"prefix_rw_dispatcher_cfg"`
 	SwitchToKeyDefault string `yaml:"default_storage"`
 	DualWErrCfg DualWErrCfg `yaml:"dual_write_err_cfg"`
 }

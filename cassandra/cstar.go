@@ -33,6 +33,7 @@ type CassandraStore struct {
 	session *gocql.Session
 	keyTableFinder *KeyTableFinder
 	staticTable bool
+	ClusterName string
 }
 
 func NewCassandraStore(cstarCfg *config.CassandraStoreCfg) (*CassandraStore, error) {
@@ -86,27 +87,37 @@ func NewCassandraStore(cstarCfg *config.CassandraStoreCfg) (*CassandraStore, err
 	if err != nil {
 		return nil, err
 	} else {
-		ktFinder, err := NewKeyTableFinder(cstarCfg)
+		cqlStore := &CassandraStore{
+			cluster: cluster,
+			session: session,
+		}
+
+		cqlStore.ClusterName, err = cqlStore.GetClusterName()
 		if err != nil {
 			return nil, err
 		}
-
-		staticT := false
-		if len(cstarCfg.TableToKeyPrefix) == 0 {
-			staticT = true
+		ktFinder, err := NewKeyTableFinder(cstarCfg, cqlStore)
+		if err != nil {
+			return nil, err
 		}
-
-		return &CassandraStore{
-			cluster: cluster,
-			session: session,
-			keyTableFinder: ktFinder,
-			staticTable: staticT,
-		}, nil
+		cqlStore.keyTableFinder = ktFinder
+		cqlStore.staticTable = !cstarCfg.PrefixTableDispatcherCfg.Enable
+		return cqlStore, nil
 	}
 }
 
 func (c *CassandraStore) Close() {
 	c.session.Close()
+}
+
+func (c *CassandraStore) GetClusterName() (string, error) {
+	var name string
+	err := c.session.Query("select cluster_name from system.local").Scan(&name)
+	if err != nil {
+		return "", err
+	} else {
+		return name, nil
+	}
 }
 
 func (c *CassandraStore) Get(key string) (*mc.Item, error) {
