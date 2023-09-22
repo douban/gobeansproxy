@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	Version = "v2.0.2-rc1"
+	Version = "v2.0.2-rc2"
 )
 
 var (
@@ -40,8 +40,7 @@ type DStoreConfig struct {
 	ScoreDeviation      float64 `yaml:"score_deviation,omitempty"`
 	ItemSizeStats       int     `yaml:"item_size_stats,omitempty"`
 	ResponseTimeMin     float64 `yaml:"response_time_min,omitempty"`
-	WriteEnable         bool    `yaml:"enable_write"`
-	ReadEnable          bool    `yaml:"enable_read"`
+	Enable              bool    `yaml:"enable"`
 }
 
 type DualWErrCfg struct {
@@ -62,8 +61,7 @@ type PrefixDisPatcherCfg struct {
 }
 
 type CassandraStoreCfg struct {
-	ReadEnable bool `yaml:"enable_read"`
-	WriteEnable bool `yaml:"enable_write"`
+	Enable bool `yaml:"enable"`
 	Hosts []string `yaml:"hosts"`
 	DefaultKeySpace string `yaml:"default_key_space"`
 	DefaultTable string `yaml:"default_table"`
@@ -108,25 +106,27 @@ func (c *ProxyConfig) Load(confdir string) {
 		}
 
 		// route
-		routePath := path.Join(confdir, "route.yaml")
-		var route *dbcfg.RouteTable
-
-		if len(c.ZKServers) > 0 {
-			route, err = dbcfg.LoadRouteTableZK(routePath, c.ZKPath, c.ZKServers)
-			if err != nil {
-				log.Printf("fail to load route table from zk: %s, err: %s", c.ZKPath, err.Error())
-			}
+		if c.DStoreConfig.Enable {
+        		routePath := path.Join(confdir, "route.yaml")
+        		var route *dbcfg.RouteTable
+        
+        		if len(c.ZKServers) > 0 {
+        			route, err = dbcfg.LoadRouteTableZK(routePath, c.ZKPath, c.ZKServers)
+        			if err != nil {
+        				log.Printf("fail to load route table from zk: %s, err: %s", c.ZKPath, err.Error())
+        			}
+        		}
+        
+        		if len(c.ZKServers) == 0 || err != nil {
+        			route, err = dbcfg.LoadRouteTableLocal(routePath)
+        		}
+        		if err != nil {
+        			log.Fatalf("fail to load route table: %s", err.Error())
+        		}
+        
+        		Route = route
+        		checkConfig(c, Route)	
 		}
-
-		if len(c.ZKServers) == 0 || err != nil {
-			route, err = dbcfg.LoadRouteTableLocal(routePath)
-		}
-		if err != nil {
-			log.Fatalf("fail to load route table: %s", err.Error())
-		}
-
-		Route = route
-		checkConfig(c, Route)
 	}
 	c.Confdir = confdir
 	dbutils.InitSizesPointer(c)

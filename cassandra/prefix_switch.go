@@ -22,10 +22,14 @@ const (
 	PrefixSwitchBwCrw PrefixSwitchStatus = 2
 	// c* rw bdb disable
 	PrefixSwitchCrw PrefixSwitchStatus = 3
+	// c* read only bdb disable
+	PrefixSwitchCr PrefixSwitchStatus  = 4
+
 	statusBrw string = "br1w1cr0w0"
 	statusBrwCw string = "br1w1cr0w1"
 	statusBwCrw string = "br0w1cr1w1"
 	statusCrw string = "br0w0cr1w1"
+	statusCr string = "br0w0cr1w0"
 )
 
 type PrefixSwitcher struct {
@@ -40,7 +44,7 @@ func (s PrefixSwitchStatus) IsReadOnBeansdb() bool {
 }
 
 func (s PrefixSwitchStatus) IsReadOnCstar() bool {
-	return s == PrefixSwitchCrw || s == PrefixSwitchBwCrw
+	return s == PrefixSwitchCrw || s == PrefixSwitchCr || s == PrefixSwitchBwCrw
 }
 
 func (s PrefixSwitchStatus) IsWriteOnBeansdb() bool {
@@ -61,6 +65,8 @@ func strToSwitchStatus(s string) (PrefixSwitchStatus, error) {
 		return PrefixSwitchBwCrw, nil
 	case statusCrw:
 		return PrefixSwitchCrw, nil
+	case statusCr:
+		return PrefixSwitchCr, nil
 	default:
 		return -1, fmt.Errorf("Unsupported switch type of %s", s) 
 	}

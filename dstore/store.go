@@ -3,7 +3,6 @@ package dstore
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -21,10 +20,6 @@ var (
 	proxyConf = &config.Proxy
 	// ErrWriteFailed 表示成功写入的节点数小于 StorageClient.W
 	ErrWriteFailed = errors.New("write failed")
-	promBR string // enable bdb read
-	promBW string // enable bdb write
-	promCR string // enable cstar read
-	promCW string // enable cstar write
 	PrefixStorageSwitcher *cassandra.PrefixSwitcher
 	PrefixTableFinder *cassandra.KeyTableFinder
 	CqlStore *cassandra.CassandraStore
@@ -37,7 +32,7 @@ type Storage struct {
 }
 
 func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
-	if pCfg.CassandraStoreCfg.ReadEnable || pCfg.CassandraStoreCfg.WriteEnable {
+	if pCfg.CassandraStoreCfg.Enable {
 		cstar, err := cassandra.NewCassandraStore(&proxyConf.CassandraStoreCfg)
 		if err != nil {
 			return err
@@ -64,10 +59,6 @@ func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
 		s.dualWErrHandler = dualWErrHandler
 		logger.Infof("dual write log send to: %s", s.dualWErrHandler.EFile)
 	}
-	promBR = strconv.FormatBool(pCfg.DStoreConfig.ReadEnable)
-	promBW = strconv.FormatBool(pCfg.DStoreConfig.WriteEnable)
-	promCR = strconv.FormatBool(pCfg.CassandraStoreCfg.ReadEnable)
-	promCW = strconv.FormatBool(pCfg.CassandraStoreCfg.WriteEnable)
 	return nil
 }
 
@@ -136,7 +127,7 @@ func (c *StorageClient) Clean() {
 
 func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
 	timer := prometheus.NewTimer(
-		cmdE2EDurationSeconds.WithLabelValues("get", promBR, promBW, promCR, promCW),
+		cmdE2EDurationSeconds.WithLabelValues("get"),
 	)
 	defer timer.ObserveDuration()
 
@@ -266,7 +257,7 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 
 func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err error) {
 	timer := prometheus.NewTimer(
-		cmdE2EDurationSeconds.WithLabelValues("getm", promBR, promBW, promCR, promCW),
+		cmdE2EDurationSeconds.WithLabelValues("getm"),
 	)
 	defer timer.ObserveDuration()
 
@@ -327,7 +318,7 @@ func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err err
 func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {
 	defer item.Free()
 	timer := prometheus.NewTimer(
-		cmdE2EDurationSeconds.WithLabelValues("set", promBR, promBW, promCR, promCW),
+		cmdE2EDurationSeconds.WithLabelValues("set"),
 	)
 	defer timer.ObserveDuration()
 
@@ -438,7 +429,7 @@ func (c *StorageClient) setConcurrently(
 }
 
 func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
-	if proxyConf.CassandraStoreCfg.WriteEnable {
+	if proxyConf.CassandraStoreCfg.Enable {
 		return false, fmt.Errorf("cstar store do not support append")
 	}
 	// NOTE: gobeansdb now do not support `append`, this is not tested.
@@ -471,7 +462,7 @@ func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 // NOTE: Incr command may has consistency problem
 // link: http://github.com/douban/gobeansproxy/issues/7
 func (c *StorageClient) Incr(key string, value int) (result int, err error) {
-	if proxyConf.CassandraStoreCfg.WriteEnable {
+	if proxyConf.CassandraStoreCfg.Enable {
 		return 0, fmt.Errorf("cstar store do not support incr")
 	}
 	c.sched = GetScheduler()
@@ -509,7 +500,7 @@ func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 // TODO: 弄清楚为什么 delete 不遵循 NWR 规则
 func (c *StorageClient) Delete(key string) (flag bool, err error) {
 	timer := prometheus.NewTimer(
-		cmdE2EDurationSeconds.WithLabelValues("del", promBR, promBW, promCR, promCW),
+		cmdE2EDurationSeconds.WithLabelValues("del"),
 	)
 	defer timer.ObserveDuration()
 
@@ -595,7 +586,7 @@ func (c *StorageClient) Len() int {
 }
 
 func (c *StorageClient) Close() {
-	if proxyConf.CassandraStoreCfg.WriteEnable {
+	if proxyConf.CassandraStoreCfg.Enable {
 		c.cstar.Close()
 	}
 	return
