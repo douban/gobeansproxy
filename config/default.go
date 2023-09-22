@@ -31,7 +31,6 @@ var (
 		ScoreDeviation:      10000, // 10000 Microseconds -> 10 Millisecond
 		ItemSizeStats:       4096,
 		ResponseTimeMin:     4000,
-		ReadEnable:          true,
-		WriteEnable:         true,
+		Enable:              true,
 	}
 )
