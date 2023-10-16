@@ -138,9 +138,12 @@ func GetPrefixSwitchTrieFromCfg(
 	}
 
 	logger.Infof("Loading from cfg: %v", loadedMap)
-
-	tr := trie.New[rune, PrefixSwitchStatus](keysString, vStatus)
-	return &tr, loadedMap, nil
+	if len(keysString) == len(vStatus) && len(keysString) > 0 {
+		tr := trie.New[rune, PrefixSwitchStatus](keysString, vStatus)
+		return &tr, loadedMap, nil
+	} else {
+		return nil, loadedMap, nil
+	}
 }
 
 func NewPrefixSwitcher(config *config.CassandraStoreCfg, cqlStore *CassandraStore) (*PrefixSwitcher, error) {
