@@ -82,9 +82,13 @@ func getTableTrieFromCfg(
 		return nil, nil, fmt.Errorf("prefix cfg duplicate: %v", duplicateKeys)
 	}
 	logger.Infof("Loading from cfg: %v", loadedMap)
-	
-	tr := trie.New[rune, string](keysString, vStrStatus)
-	prefixTrie = &tr
+
+	if len(keysString) == len(vStrStatus) && len(keysString) > 0 {
+		tr := trie.New[rune, string](keysString, vStrStatus)
+		prefixTrie = &tr
+	} else {
+		prefixTrie = nil
+	}
 
 	return prefixTrie, loadedMap, nil
 }
