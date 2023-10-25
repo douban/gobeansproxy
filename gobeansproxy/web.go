@@ -285,6 +285,7 @@ type ReloadableCfg struct {
 func handleCstarCfgReload(w http.ResponseWriter, r *http.Request) {
 	defer handleWebPanic(w)
 
+	w.Header().Set("Content-Type", "application/json")
 	resp := make(map[string]string)
 	cfgName := r.URL.Query().Get("config")
 	var dispatcher cassandra.PrefixDisPatcher
@@ -412,6 +413,5 @@ func handleCstarCfgReload(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		resp["message"] = "success"
 	}
-	w.Header().Set("Content-Type", "application/json")
 	handleJson(w, resp)
 }
