@@ -276,6 +276,12 @@ func handleRouteReload(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
+type ReloadableCfg struct {
+	Cfg map[string]string `json:"cfg"`
+	Message string        `json:"message"`
+	Error string          `json:"error"`
+}
+
 func handleCstarCfgReload(w http.ResponseWriter, r *http.Request) {
 	defer handleWebPanic(w)
 
@@ -297,13 +303,13 @@ func handleCstarCfgReload(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case "GET":
-		c, err := json.Marshal(dispatcher.GetCurrentMap())
-		if err != nil {
-			resp["error"] = fmt.Sprintf("get cfg err: %s", err)
-		} else {
-			resp["cfg"] = string(c)
-			resp["message"] = "ok"
+		response := ReloadableCfg{
+			Cfg: dispatcher.GetCurrentMap(),
 		}
+		response.Message = "success"
+		w.WriteHeader(http.StatusOK)
+		handleJson(w, response)
+		return
 	case "POST":
 		staticCfg, err := dispatcher.LoadStaticCfg(config.Proxy.Confdir)
 		if err != nil {
