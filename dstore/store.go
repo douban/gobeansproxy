@@ -32,6 +32,10 @@ type Storage struct {
 }
 
 func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
+	if !pCfg.CassandraStoreCfg.Enable && !pCfg.DStoreConfig.Enable {
+		return fmt.Errorf("You must enable at least one store engine")
+	}
+
 	if pCfg.CassandraStoreCfg.Enable {
 		cstar, err := cassandra.NewCassandraStore(&proxyConf.CassandraStoreCfg)
 		if err != nil {
@@ -58,6 +62,12 @@ func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
 		}
 		s.dualWErrHandler = dualWErrHandler
 		logger.Infof("dual write log send to: %s", s.dualWErrHandler.EFile)
+	} else {
+		switcher, err := cassandra.NewPrefixSwitcher(&proxyConf.CassandraStoreCfg, nil)
+		if err != nil {
+			return err
+		}
+		s.PSwitcher = switcher
 	}
 	return nil
 }
@@ -107,7 +117,10 @@ func NewStorageClient(n int, w int, r int,
 	c.pswitcher = pStoreSwitcher
 	c.dualWErrHandler = dualEHandler
 	c.proxyHostName = fmt.Sprintf("%s:%d", proxyConf.Hostname, proxyConf.Port)
-	c.cstarClusterName = c.cstar.ClusterName
+	if c.cstar != nil {
+		// for user disabled cstar store
+		c.cstarClusterName = c.cstar.ClusterName
+	}
 	return c
 }
 

@@ -37,6 +37,7 @@ type PrefixSwitcher struct {
 	defaultT PrefixSwitchStatus
 	lock sync.RWMutex
 	currentTrieMap map[string]string
+	cstarEnabled bool
 }
 
 func (s PrefixSwitchStatus) IsReadOnBeansdb() bool {
@@ -147,13 +148,21 @@ func GetPrefixSwitchTrieFromCfg(
 }
 
 func NewPrefixSwitcher(config *config.CassandraStoreCfg, cqlStore *CassandraStore) (*PrefixSwitcher, error) {
+	f := new(PrefixSwitcher)
+
+	if !config.Enable {
+		f.defaultT = PrefixSwitchBrw
+		f.cstarEnabled = false
+		return f, nil
+	}
+
 	prefixTrie, nowMap, err := GetPrefixSwitchTrieFromCfg(config, cqlStore)
 	if err != nil {
 		return nil, err
 	}
 
-	f := new(PrefixSwitcher)
 	f.trie = prefixTrie
+	f.cstarEnabled = true
 
 	defaultS, err := strToSwitchStatus(config.SwitchToKeyDefault)
 	if err != nil {
@@ -196,6 +205,10 @@ func (s *PrefixSwitcher) matchStatus(key string) PrefixSwitchStatus {
 }
 
 func (s *PrefixSwitcher) GetStatus(key string) PrefixSwitchStatus {
+	if !s.cstarEnabled {
+		return PrefixSwitchBrw
+	}
+
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	return s.matchStatus(key)
@@ -203,12 +216,20 @@ func (s *PrefixSwitcher) GetStatus(key string) PrefixSwitchStatus {
 
 // check key prefix and return bdb read enable c* read enable
 func (s *PrefixSwitcher) ReadEnabledOn(key string) (bool, bool) {
+	if !s.cstarEnabled {
+		return true, false
+	}
 	status := s.GetStatus(key)
 	return status.IsReadOnBeansdb(), status.IsReadOnCstar()
 }
 
 // check keys prefix list and return bdb read keys and c* read keys
 func (s *PrefixSwitcher) ReadEnableOnKeys(keys []string) (bkeys []string, ckeys []string) {
+	if !s.cstarEnabled {
+		bkeys = keys
+		return
+	}
+
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
@@ -230,6 +251,9 @@ func (s *PrefixSwitcher) ReadEnableOnKeys(keys []string) (bkeys []string, ckeys 
 
 // check key prefix and return bdb write enable c* write enable
 func (s *PrefixSwitcher) WriteEnabledOn(key string) (bool, bool) {
+	if !s.cstarEnabled {
+		return true, false
+	}
 	status := s.GetStatus(key)
 	return status.IsWriteOnBeansdb(), status.IsWriteOnCstar()
 }
@@ -252,6 +276,11 @@ func (s *PrefixSwitcher) LoadStaticCfg(cfgDir string) (*config.CassandraStoreCfg
 }
 
 func (s *PrefixSwitcher) LoadCfg(cfg *config.CassandraStoreCfg, cqlStore *CassandraStore) error {
+	if !cfg.Enable {
+		logger.Errorf("You can't use prefix switcher when c* backend disabled")
+		return fmt.Errorf("can't load prefix swicher cfg when cassandra backend disabled")
+	}
+
 	if !cfg.PrefixRWDispatcherCfg.Enable {
 		logger.Errorf("You can't disable rw dispatcher online")
 		return fmt.Errorf("You can't disable rw dispathcer online")

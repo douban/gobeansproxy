@@ -292,8 +292,20 @@ func handleCstarCfgReload(w http.ResponseWriter, r *http.Request) {
 
 	switch cfgName {
 	case "tablefinder":
+		if dstore.PrefixTableFinder == nil {
+			resp["error"] = "cassandra is disabled"
+			w.WriteHeader(http.StatusBadRequest)
+			handleJson(w, resp)
+			return
+		}
 		dispatcher = dstore.PrefixTableFinder
 	case "rwswitcher":
+		if dstore.PrefixStorageSwitcher == nil {
+			resp["error"] = "cassandra is disabled"
+			w.WriteHeader(http.StatusBadRequest)
+			handleJson(w, resp)
+			return
+		}
 		dispatcher = dstore.PrefixStorageSwitcher
 	default:
 		resp["error"] = "unsupported config query arg, must be: tablefinder/rwswitcher"
