@@ -15,12 +15,17 @@ jobs:
 
     - name: Checkout code
       uses: actions/checkout@v1
+      with:
+        fetch-depth: 1
+        path: go/src/github.com/douban/gobeansproxy
 
     - name: Test
       run: |
         go mod tidy
         go install github.com/douban/gobeansdb@latest
         make test
+      env:
+        GOPATH: /home/runner/work/gobeansproxy/go/
 
     - name: Install
       run: make install
