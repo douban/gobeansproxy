@@ -32,6 +32,16 @@ const (
 	statusCr string = "br0w0cr1w0"
 )
 
+var (
+	allowRWStatus = map[string]bool{
+		statusBrw: true,
+		statusBrwCw: true,
+		statusBwCrw: true,
+		statusCrw: true,
+		statusCr: true,
+	}
+)
+
 type PrefixSwitcher struct {
 	trie *trie.Tree[rune, PrefixSwitchStatus]
 	defaultT PrefixSwitchStatus
@@ -309,6 +319,11 @@ func (s *PrefixSwitcher) LoadCfg(cfg *config.CassandraStoreCfg, cqlStore *Cassan
 }
 
 func (s *PrefixSwitcher) Upsert(cfg *config.CassandraStoreCfg, data map[string][]string, cqlStore *CassandraStore) error {
+	for rwStatus := range data {
+		if _, ok := allowRWStatus[rwStatus]; !ok {
+			return fmt.Errorf("%s is not a validate rwstatus", rwStatus)
+		}
+	}
 	dispatcherCfg := DisPatcherCfg(cfg.PrefixRWDispatcherCfg)
 	return dispatcherCfg.SaveToDB(data, cqlStore)
 }
