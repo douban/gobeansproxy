@@ -7,6 +7,9 @@ import (
 var (
 	totalReqs *prometheus.CounterVec
 	errorReqs *prometheus.CounterVec
+	rrrStoreReqs *prometheus.CounterVec
+	rrrStoreErr *prometheus.CounterVec
+	rrrStoreLag *prometheus.GaugeVec
 	cmdReqDurationSeconds *prometheus.HistogramVec
 	cmdE2EDurationSeconds *prometheus.HistogramVec
 	BdbProxyPromRegistry *prometheus.Registry
@@ -52,4 +55,34 @@ func init() {
 		[]string{"cmd"},
 	)
 	BdbProxyPromRegistry.MustRegister(cmdE2EDurationSeconds)
+
+	rrrStoreReqs = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "gobeansproxy",
+			Name: "rrr_store_reqs",
+			Help: "read only rr backends req counter",
+		},
+		[]string{"host"},
+	)
+	BdbProxyPromRegistry.MustRegister(rrrStoreReqs)
+	
+	rrrStoreErr = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "gobeansproxy",
+			Name: "rrr_store_conn_err",
+			Help: "store connection error counter",
+		},
+		[]string{"host", "conn"},
+	)
+	BdbProxyPromRegistry.MustRegister(rrrStoreErr)
+
+	rrrStoreLag = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "gobeansproxy",
+			Name: "rrr_store_lag_ms",
+			Help: "round robin read only sch store lag",
+		},
+		[]string{"host"},
+	)
+	BdbProxyPromRegistry.MustRegister(rrrStoreLag)
 }

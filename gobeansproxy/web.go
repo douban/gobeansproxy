@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -17,9 +18,9 @@ import (
 	dbcfg "github.com/douban/gobeansdb/config"
 	mc "github.com/douban/gobeansdb/memcache"
 	"github.com/douban/gobeansdb/utils"
+	"github.com/douban/gobeansproxy/cassandra"
 	"github.com/douban/gobeansproxy/config"
 	"github.com/douban/gobeansproxy/dstore"
-	"github.com/douban/gobeansproxy/cassandra"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -220,6 +221,11 @@ func getFormValueInt(r *http.Request, name string, ndefault int) (n int, err err
 }
 
 func handleRouteReload(w http.ResponseWriter, r *http.Request) {
+	if !proxyConf.DStoreConfig.Enable {
+		w.Write([]byte("err: dstore not enabled"))
+		return
+	}
+
 	var err error
 	if !dbcfg.AllowReload {
 		w.Write([]byte("err: reloading"))
@@ -236,44 +242,56 @@ func handleRouteReload(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	if len(proxyConf.ZKServers) == 0 {
-		w.Write([]byte("err: not using zookeeper"))
-		return
+	if proxyConf.DStoreConfig.Scheduler == dstore.BucketsManualSchduler {
+		if len(proxyConf.ZKServers) == 0 {
+			w.Write([]byte("err: not using zookeeper"))
+			return
+		}
+
+		defer handleWebPanic(w)
+
+		r.ParseForm()
+		ver, err := getFormValueInt(r, "ver", -1)
+		if err != nil {
+			return
+		}
+
+		newRouteContent, ver, err := dbcfg.ZKClient.GetRouteRaw(ver)
+		if ver == dbcfg.ZKClient.Version {
+			w.Write([]byte(fmt.Sprintf("warn: same version %d", ver)))
+			return
+		}
+		info := fmt.Sprintf("update with route version %d\n", ver)
+		logger.Infof(info)
+		newRoute := new(dbcfg.RouteTable)
+		err = newRoute.LoadFromYaml(newRouteContent)
+		if err != nil {
+			return
+		}
+
+		oldScheduler := dstore.GetScheduler()
+		dstore.InitGlobalManualScheduler(newRoute, proxyConf.N, proxyConf.Scheduler)
+		config.Route = newRoute
+		dbcfg.ZKClient.Version = ver
+		w.Write([]byte("ok"))
+
+		go func() {
+			// sleep for request to be completed.
+			time.Sleep(time.Duration(proxyConf.ReadTimeoutMs) * time.Millisecond * 5)
+			logger.Infof("scheduler closing when reroute, request: %v", r)
+			oldScheduler.Close()
+		}()
+	} else {
+		routePath := path.Join(proxyConf.Confdir, "route.yaml")
+		route, err := dbcfg.LoadRouteTableLocal(routePath)
+		if err != nil {
+			w.Write([]byte(fmt.Sprintf("%s", err)))
+			return
+		}
+		dstore.InitGlobalManualScheduler(route, proxyConf.N, proxyConf.Scheduler)
+		config.Route = route
+		w.Write([]byte("ok"))
 	}
-
-	defer handleWebPanic(w)
-
-	r.ParseForm()
-	ver, err := getFormValueInt(r, "ver", -1)
-	if err != nil {
-		return
-	}
-
-	newRouteContent, ver, err := dbcfg.ZKClient.GetRouteRaw(ver)
-	if ver == dbcfg.ZKClient.Version {
-		w.Write([]byte(fmt.Sprintf("warn: same version %d", ver)))
-		return
-	}
-	info := fmt.Sprintf("update with route version %d\n", ver)
-	logger.Infof(info)
-	newRoute := new(dbcfg.RouteTable)
-	err = newRoute.LoadFromYaml(newRouteContent)
-	if err != nil {
-		return
-	}
-
-	oldScheduler := dstore.GetScheduler()
-	dstore.InitGlobalManualScheduler(newRoute, proxyConf.N)
-	config.Route = newRoute
-	dbcfg.ZKClient.Version = ver
-	w.Write([]byte("ok"))
-
-	go func() {
-		// sleep for request to be completed.
-		time.Sleep(time.Duration(proxyConf.ReadTimeoutMs) * time.Millisecond * 5)
-		logger.Infof("scheduler closing when reroute, request: %v", r)
-		oldScheduler.Close()
-	}()
 }
 
 type ReloadableCfg struct {
