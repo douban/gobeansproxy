@@ -14,6 +14,8 @@ const (
 	FeedbackNonConnectErrDelete  = -10
 	FeedbackConnectErrDefault    = -2
 	FeedbackNonConnectErrDefault = -5
+	NoBucketsRounRobinROSchduler = "no_buckets_rro"
+	BucketsManualSchduler        = "buckets_manual"
 )
 
 var (
@@ -73,8 +75,21 @@ func GetScheduler() Scheduler {
 	return globalScheduler
 }
 
-func InitGlobalManualScheduler(route *dbcfg.RouteTable, n int) {
-	globalScheduler = NewManualScheduler(route, n)
+func InitGlobalManualScheduler(route *dbcfg.RouteTable, n int, schedulerName string) {
+	switch schedulerName {
+	case BucketsManualSchduler, "":
+		globalScheduler = NewManualScheduler(route, n)
+	case NoBucketsRounRobinROSchduler:
+		if n != 1 {
+			logger.Fatalf("rro readonly scheduler can only use one replica, now: %d", n)
+		}
+		globalScheduler = NewRRReadScheduler(route)
+	default:
+		logger.Fatalf(
+			"Unsupported scheduler, must be: %s or %s",
+			BucketsManualSchduler, NoBucketsRounRobinROSchduler,
+		)
+	}
 }
 
 func NewManualScheduler(route *dbcfg.RouteTable, n int) *ManualScheduler {
@@ -246,7 +261,6 @@ func (sch *ManualScheduler) tryRebalance() {
 }
 
 func (sch *ManualScheduler) checkFailsForBucket(bucket *Bucket) {
-
 	hosts := bucket.hostsList
 	for _, hostBucket := range hosts {
 		if item, err := hostBucket.host.Get("@"); err == nil {

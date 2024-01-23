@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	Version = "v2.0.3"
+	Version = "v2.1.0"
 )
 
 var (
@@ -41,6 +41,7 @@ type DStoreConfig struct {
 	ItemSizeStats       int     `yaml:"item_size_stats,omitempty"`
 	ResponseTimeMin     float64 `yaml:"response_time_min,omitempty"`
 	Enable              bool    `yaml:"enable"`
+	Scheduler           string  `yaml:"scheduler,omitempty"`
 }
 
 type DualWErrCfg struct {
