@@ -19,7 +19,6 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/douban/gobeansproxy/config"
-	"github.com/douban/gobeansproxy/dstore"
 	"github.com/douban/gobeansproxy/utils"
 	"github.com/stretchr/testify/assert"
 )
@@ -239,7 +238,7 @@ func TestDStoreOnly(t *testing.T) {
 	proxyConf := &config.Proxy
 	proxyConf.Load(confdir)
 
-	InitGlobalManualScheduler(config.Route, proxyConf.N, dstore.BucketsManualSchduler)
+	InitGlobalManualScheduler(config.Route, proxyConf.N, BucketsManualSchduler)
 	storage := new(Storage)
 	storage.InitStorageEngine(proxyConf)
 	c := NewStorageClient(proxyConf.N, proxyConf.W, proxyConf.R, storage.cstar, storage.PSwitcher, storage.dualWErrHandler)

@@ -11,7 +11,9 @@ import (
 type RRReadScheduler struct {
 	hosts []*Host
 	current atomic.Int32
-	totalHosts int32
+	totalHostsI32 int32
+	totalHosts int
+	totalHostsF64 float64
 	quit bool
 }
 
@@ -23,12 +25,14 @@ func NewRRReadScheduler(route *dbcfg.RouteTable) *RRReadScheduler {
 		host := NewHost(server.Addr)
 		rrsche.hosts[idx] = host
 	}
-	rrsche.totalHosts = int32(len(rrsche.hosts))
+	rrsche.totalHosts = len(rrsche.hosts)
+	rrsche.totalHostsI32 = int32(rrsche.totalHosts)
+	rrsche.totalHostsF64 = float64(rrsche.totalHosts)
 	return rrsche
 }
 
 func (sch *RRReadScheduler) GetHostsByKey(key string) (hosts []*Host) {
-	next := sch.current.Add(1) % sch.totalHosts
+	next := sch.current.Add(1) % sch.totalHostsI32
 	sch.current.Store(next)
 	rrrStoreReqs.WithLabelValues(sch.hosts[next].Addr).Inc()
 	return sch.hosts[next:next+1]
@@ -47,9 +51,9 @@ func (sch *RRReadScheduler) FeedbackLatency(host *Host, key string, startTime ti
 
 // route some keys to group of hosts
 func (sch *RRReadScheduler) DivideKeysByBucket(keys []string) [][]string {
-	numKeysPer := int(math.Round(float64(len(keys)) / float64(len(sch.hosts))))
+	numKeysPer := int(math.Round(float64(len(keys)) / sch.totalHostsF64))
 	rs := make([][]string, len(sch.hosts))
-	maxEndIdx := len(keys) - 1
+	maxEndIdx := len(sch.hosts) - 1
 
 	startIdx := 0
 	partIdx := 0
