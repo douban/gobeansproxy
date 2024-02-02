@@ -1,10 +1,14 @@
 import os
 import errno
 import yaml
+try:
+    from yaml import Cloader as Loader
+except ImportError:
+    from yaml import Loader
 import string
 import socket
 import random
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 import time
 import shlex
 import subprocess
@@ -24,24 +28,24 @@ def mkdir_p(path):
 def random_string(n):
     s = string.ascii_letters
     result = ""
-    for _ in xrange(n):
+    for _ in range(n):
         result += random.choice(s)
     return result
 
 
 def gethttp(addr, path):
     url = "http://%s/%s" % (addr, path)
-    response = urllib2.urlopen(url)
+    response = urllib.request.urlopen(url)
     return response.read()
 
 
 def start_cmd(cmd):
-    print "start", cmd
+    print("start", cmd)
     log_file = '/tmp/beansdb/log.txt'
     mkdir_p(os.path.dirname(log_file))
     with open(log_file, 'a') as f:
         p = subprocess.Popen(
-            cmd if isinstance(cmd, (tuple, list,)) else shlex.split(cmd),
+            cmd if isinstance(cmd, (tuple, list)) else shlex.split(cmd),
             stderr=f,
         )
     time.sleep(0.2)
@@ -73,9 +77,9 @@ def get_server_addr(conf_dir, server_name):
     def port_to_addr(port):
         return '%s:%s' % (host, port)
 
-    return map(port_to_addr, [port, webport])
+    return list(map(port_to_addr, [port, webport]))
 
 
 def load_yaml(filepath):
     with open(filepath) as f:
-        return yaml.load(f)
+        return yaml.load(f, Loader=Loader)

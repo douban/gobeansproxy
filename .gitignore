@@ -8,3 +8,10 @@ vendor/
 .idea/
 main
 vendor/
+
+# add by pdectl
+.doubanpde/*
+!.doubanpde/pde.yaml
+!.doubanpde/pdectl-*
+.doubanpde/pdectl-*/*
+!.doubanpde/pdectl-*/Dockerfile.tpl

@@ -8,10 +8,18 @@ class KeyVersionTest(BaseTest):
     def setUp(self):
         BaseTest.setUp(self)
 
+    # def tearDown(self):
+    #     import time
+    #     time.sleep(600)
+    #     super(self).tearDown()
+
     def _assert_val(self, addr, key, val, msg=None):
         store = MCStore(addr)
         self.assertEqual(store.get(key), val, msg)
 
+    @BaseTest.require_rw_enable(
+        br=(True, False), bw=(True,), cr=(False,), cw=(False, True)
+    )
     def test_normal(self):
         proxy = MCStore(self.proxy.addr)
         key = '/test/normal/key'
@@ -22,6 +30,9 @@ class KeyVersionTest(BaseTest):
         for db in self.dbs:
             self._assert_val(db.addr, key, val)
 
+    @BaseTest.require_rw_enable(
+        br=(True, False), bw=(True,), cr=(False,), cw=(False, True)
+    )
     def test_one_server_down(self):
         proxy = MCStore(self.proxy.addr)
         key = '/test/one/server/down'
@@ -39,6 +50,9 @@ class KeyVersionTest(BaseTest):
         for db in self.backup_dbs:
             self._assert_val(db.addr, key, None)
 
+    @BaseTest.require_rw_enable(
+        br=(True, False), bw=(True,), cr=(False,), cw=(False, True)
+    )
     def test_two_server_down(self):
         proxy = MCStore(self.proxy.addr)
         key = '/test/two/server/down'
@@ -57,6 +71,9 @@ class KeyVersionTest(BaseTest):
         for db in self.backup_dbs:
             self._assert_val(db.addr, key, val)
 
+    @BaseTest.require_rw_enable(
+        br=(True, False), bw=(True,), cr=(False,), cw=(False, True)
+    )
     def test_three_server_down(self):
         proxy = MCStore(self.proxy.addr)
         key = '/test/three/server/down'

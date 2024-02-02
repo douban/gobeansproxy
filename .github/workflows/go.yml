@@ -4,9 +4,8 @@ jobs:
   test:
     strategy:
       matrix:
-        go-version: [1.12.x, 1.13.x]
-        python-version: [2.x]
-        platform: [ubuntu-latest, macos-latest]
+        go-version: [1.20.x, 1.21.x]
+        platform: [ubuntu-latest]
     runs-on: ${{ matrix.platform }}
     steps:
     - name: Install Go
@@ -14,27 +13,19 @@ jobs:
       with:
         go-version: ${{ matrix.go-version }}
 
-    - name: Install Python
-      uses: actions/setup-python@v1
-      with:
-        python-version: ${{ matrix.python-version }}
-
     - name: Checkout code
       uses: actions/checkout@v1
+      with:
+        fetch-depth: 1
+        path: go/src/github.com/douban/gobeansproxy
 
-    - name: Get test tools
-      run: go get -u -v golang.org/x/tools/cmd/goimports
-    
-    - name: Prepare Test
-      run: pip install --user -r tests/pip-req.txt
-    
     - name: Test
       run: |
-        export PATH=${PATH}:`go env GOPATH`/bin
-        diff <(goimports -d .) <(printf "")
-        go mod vendor
-        go get -u -v github.com/douban/gobeansdb
+        go mod tidy
+        go install github.com/douban/gobeansdb@latest
         make test
+      env:
+        GOPATH: /home/runner/work/gobeansproxy/go/
 
     - name: Install
       run: make install

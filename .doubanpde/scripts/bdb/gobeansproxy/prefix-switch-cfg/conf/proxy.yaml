@@ -1,0 +1,80 @@
+cassandra:
+    default_key_space: doubandb
+    default_table: kvstore
+    enable: true
+    hosts:
+    - 127.0.0.1:9042
+    timeout_ms: 1000
+    connect_timeout_ms: 3000
+    write_timeout_ms: 1000
+    retry_num: 3
+    reconnect_interval_sec: 180
+    max_conn_for_getm: 10
+    num_conns: 10
+    username: "doubandb_test"
+    password: "doubandb_test"
+    consistency: "local_one"
+    prefix_table_dispatcher_cfg:
+      # if not enable will use default keyspace and table
+      enable: true
+      static:
+        # dispatch prefix1 key to table table_name1
+        kvstore_ark:
+          - "/ark"
+      cfg_table: bdb_prefix_table_finder
+      cfg_keyspace: doubandb
+    prefix_rw_dispatcher_cfg:
+      enable: true
+      static:
+        # dispatch prefix /test_prefix_c/ to dual write
+        br1w1cr0w1:
+          - "/test_prefix_c/"
+          - "/test_prefix_d/"
+          - "/arkark/"
+        br0w0cr1w1:
+          - "test_"
+      cfg_table: bdb_prefix_rw_switcher
+      cfg_keyspace: doubandb
+    default_storage: "br0w1cr1w1"
+    dual_write_err_cfg:
+      dump_to_dir: /tmp/gobeansproxy_prefix/proxy/
+      log_file_name: dual_write_err.log
+      logger_level: "INFO"
+      rotate_size_mb: 100
+      compress: true
+      max_ages: 7
+      max_backups: 100
+dstore:
+    enable: true
+    connect_timeout_ms: 300
+    dial_fail_silence_ms: 5000
+    error_seconds: 10
+    item_size_stats: 4096
+    max_connect_errors: 3
+    max_free_conns_per_host: 20
+    n: 3
+    r: 1
+    read_timeout_ms: 2000
+    response_time_min: 4000
+    response_time_seconds: 10
+    score_deviation: 10
+    w: 2
+    write_timeout_ms: 2000
+mc:
+    body_big_str: 5M
+    body_c_str: 0K
+    body_max_str: 50M
+    max_key_len: 250
+    max_req: 16
+proxy:
+    accesslog: /tmp/gobeansproxy_prefix/proxy/access.log
+    errorlog: /tmp/gobeansproxy_prefix/proxy/error.log
+    hostname: 127.0.0.1
+    listen: 0.0.0.0
+    port: 47907
+    staticdir: /var/lib/gobeansproxy
+    threads: 8
+    webport: 47910
+    zkpath: /gobeansproxy/test
+    zkservers:
+    - zk1:2181
