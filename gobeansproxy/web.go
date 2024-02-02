@@ -3,8 +3,10 @@ package gobeansproxy
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -16,8 +18,11 @@ import (
 	dbcfg "github.com/douban/gobeansdb/config"
 	mc "github.com/douban/gobeansdb/memcache"
 	"github.com/douban/gobeansdb/utils"
+	"github.com/douban/gobeansproxy/cassandra"
 	"github.com/douban/gobeansproxy/config"
 	"github.com/douban/gobeansproxy/dstore"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	yaml "gopkg.in/yaml.v2"
 )
@@ -54,6 +59,7 @@ func handleJson(w http.ResponseWriter, v interface{}) {
 		w.Write(b)
 	}
 }
+
 
 type templateHandler struct {
 	once     sync.Once
@@ -119,6 +125,12 @@ func startWeb() {
 	http.HandleFunc("/route/", handleRoute)
 	http.HandleFunc("/route/version", handleRouteVersion)
 	http.HandleFunc("/route/reload", handleRouteReload)
+	http.Handle(
+		"/metrics",
+		promhttp.HandlerFor(dstore.BdbProxyPromRegistry,
+			promhttp.HandlerOpts{Registry: dstore.BdbProxyPromRegistry}),
+	)
+	http.HandleFunc("/cstar-cfg", handleCstarCfgReload)
 
 	webaddr := fmt.Sprintf("%s:%d", proxyConf.Listen, proxyConf.WebPort)
 	go func() {
@@ -209,6 +221,11 @@ func getFormValueInt(r *http.Request, name string, ndefault int) (n int, err err
 }
 
 func handleRouteReload(w http.ResponseWriter, r *http.Request) {
+	if !proxyConf.DStoreConfig.Enable {
+		w.Write([]byte("err: dstore not enabled"))
+		return
+	}
+
 	var err error
 	if !dbcfg.AllowReload {
 		w.Write([]byte("err: reloading"))
@@ -225,42 +242,206 @@ func handleRouteReload(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	if len(proxyConf.ZKServers) == 0 {
-		w.Write([]byte("err: not using zookeeper"))
-		return
-	}
+	if proxyConf.DStoreConfig.Scheduler == dstore.BucketsManualSchduler {
+		if len(proxyConf.ZKServers) == 0 {
+			w.Write([]byte("err: not using zookeeper"))
+			return
+		}
 
+		defer handleWebPanic(w)
+
+		r.ParseForm()
+		ver, err := getFormValueInt(r, "ver", -1)
+		if err != nil {
+			return
+		}
+
+		newRouteContent, ver, err := dbcfg.ZKClient.GetRouteRaw(ver)
+		if ver == dbcfg.ZKClient.Version {
+			w.Write([]byte(fmt.Sprintf("warn: same version %d", ver)))
+			return
+		}
+		info := fmt.Sprintf("update with route version %d\n", ver)
+		logger.Infof(info)
+		newRoute := new(dbcfg.RouteTable)
+		err = newRoute.LoadFromYaml(newRouteContent)
+		if err != nil {
+			return
+		}
+
+		oldScheduler := dstore.GetScheduler()
+		dstore.InitGlobalManualScheduler(newRoute, proxyConf.N, proxyConf.Scheduler)
+		config.Route = newRoute
+		dbcfg.ZKClient.Version = ver
+		w.Write([]byte("ok"))
+
+		go func() {
+			// sleep for request to be completed.
+			time.Sleep(time.Duration(proxyConf.ReadTimeoutMs) * time.Millisecond * 5)
+			logger.Infof("scheduler closing when reroute, request: %v", r)
+			oldScheduler.Close()
+		}()
+	} else {
+		routePath := path.Join(proxyConf.Confdir, "route.yaml")
+		route, err := dbcfg.LoadRouteTableLocal(routePath)
+		if err != nil {
+			w.Write([]byte(fmt.Sprintf("%s", err)))
+			return
+		}
+		dstore.InitGlobalManualScheduler(route, proxyConf.N, proxyConf.Scheduler)
+		config.Route = route
+		w.Write([]byte("ok"))
+	}
+}
+
+type ReloadableCfg struct {
+	Cfg map[string]string `json:"cfg"`
+	Message string        `json:"message"`
+	Error string          `json:"error"`
+}
+
+func handleCstarCfgReload(w http.ResponseWriter, r *http.Request) {
 	defer handleWebPanic(w)
 
-	r.ParseForm()
-	ver, err := getFormValueInt(r, "ver", -1)
-	if err != nil {
+	w.Header().Set("Content-Type", "application/json")
+	resp := make(map[string]string)
+	cfgName := r.URL.Query().Get("config")
+	var dispatcher cassandra.PrefixDisPatcher
+
+	switch cfgName {
+	case "tablefinder":
+		if dstore.PrefixTableFinder == nil {
+			resp["error"] = "cassandra is disabled"
+			w.WriteHeader(http.StatusBadRequest)
+			handleJson(w, resp)
+			return
+		}
+		dispatcher = dstore.PrefixTableFinder
+	case "rwswitcher":
+		if dstore.PrefixStorageSwitcher == nil {
+			resp["error"] = "cassandra is disabled"
+			w.WriteHeader(http.StatusBadRequest)
+			handleJson(w, resp)
+			return
+		}
+		dispatcher = dstore.PrefixStorageSwitcher
+	default:
+		resp["error"] = "unsupported config query arg, must be: tablefinder/rwswitcher"
+		w.WriteHeader(http.StatusBadRequest)
+		handleJson(w, resp)
 		return
 	}
 
-	newRouteContent, ver, err := dbcfg.ZKClient.GetRouteRaw(ver)
-	if ver == dbcfg.ZKClient.Version {
-		w.Write([]byte(fmt.Sprintf("warn: same version %d", ver)))
+	switch r.Method {
+	case "GET":
+		response := ReloadableCfg{
+			Cfg: dispatcher.GetCurrentMap(),
+		}
+		response.Message = "success"
+		w.WriteHeader(http.StatusOK)
+		handleJson(w, response)
 		return
-	}
-	info := fmt.Sprintf("update with route version %d\n", ver)
-	logger.Infof(info)
-	newRoute := new(dbcfg.RouteTable)
-	err = newRoute.LoadFromYaml(newRouteContent)
-	if err != nil {
-		return
+	case "POST":
+		staticCfg, err := dispatcher.LoadStaticCfg(config.Proxy.Confdir)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("load static cfg err: %s", err)
+			break
+		}
+
+		err = dispatcher.LoadCfg(staticCfg, dstore.CqlStore)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("load cfg from db err: %s", err)
+			break
+		}
+		resp["message"] = "ok"
+	case "PUT":
+		// load cfg static
+		staticCfg, err := dispatcher.LoadStaticCfg(config.Proxy.Confdir)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("load static cfg err: %s", err)
+			break
+		}
+
+		// upsert new data to db
+		b, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("get body from req err: %s", err)
+			break
+		}
+		defer r.Body.Close()
+		var data map[string](map[string][]string)
+		err = json.Unmarshal(b, &data)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("parse req err: %s", err)
+			break
+		}
+		pdata, ok := data["prefix"]
+		if !ok {
+			resp["error"] = fmt.Sprintf("parse req err: doesn't match {'prefix': {'<dispatch_to>': ['prefix1', 'prefix2']}}")
+			break
+		}
+		err = dispatcher.Upsert(staticCfg, pdata, dstore.CqlStore)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("upsert data %v err: %s", data, err)
+			break
+		}
+
+		// require load cfg actually
+		err = dispatcher.LoadCfg(staticCfg, dstore.CqlStore)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("load cfg to server err: %s", err)
+			break
+		}
+	case "DELETE":
+		// load cfg static
+		staticCfg, err := dispatcher.LoadStaticCfg(config.Proxy.Confdir)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("load static cfg err: %s", err)
+			break
+		}
+
+		// upsert new data to db
+		b, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("get body from req err: %s", err)
+			break
+		}
+		defer r.Body.Close()
+		var data map[string]string
+		err = json.Unmarshal(b, &data)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("parse req err: %s", err)
+			break
+		}
+
+		prefix, ok := data["prefix"]
+		if !ok {
+			resp["error"] = fmt.Sprintf("req data should like: {'prefix': <your data>}")
+			break
+		}
+		err = dispatcher.DeletePrefix(staticCfg, prefix, dstore.CqlStore)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("upsert data %v err: %s", data, err)
+			break
+		}
+
+		// require load cfg actually
+		err = dispatcher.LoadCfg(staticCfg, dstore.CqlStore)
+		if err != nil {
+			resp["error"] = fmt.Sprintf("load cfg to server err: %s", err)
+			break
+		}
+	default:
+		w.WriteHeader(http.StatusBadRequest)
+		resp["error"] = "unsupported method"
 	}
 
-	oldScheduler := dstore.GetScheduler()
-	dstore.InitGlobalManualScheduler(newRoute, proxyConf.N)
-	config.Route = newRoute
-	dbcfg.ZKClient.Version = ver
-	w.Write([]byte("ok"))
-
-	go func() {
-		// sleep for request to be completed.
-		time.Sleep(time.Duration(proxyConf.ReadTimeoutMs) * time.Millisecond * 5)
-		logger.Infof("scheduler closing when reroute, request: %v", r)
-		oldScheduler.Close()
-	}()
+	
+	if _, ok := resp["error"]; ok {
+		w.WriteHeader(http.StatusBadGateway)
+	} else {
+		w.WriteHeader(http.StatusOK)
+		resp["message"] = "success"
+	}
+	handleJson(w, resp)
 }

@@ -4,14 +4,14 @@ A proxy for [Gobeansdb](https://github.com/douban/gobeansdb).
 
 ## Prepare
 
-Supported Go version: > 1.11.0
+Supported Go version: > 1.20.0
 
 ## Install
 
 ```
 $ git clone http://github.com/douban/gobeansproxy.git
 $ cd gobeansproxy
-$ go mod vendor
+$ go mod tidy
 $ make
 ```
 

@@ -54,8 +54,14 @@ func Main() {
 		config.Version, proxyConf.Port, proxyConf)
 	logger.Infof("route table: %#v", config.Route)
 
-	dstore.InitGlobalManualScheduler(config.Route, proxyConf.N)
+	if proxyConf.DStoreConfig.Enable {
+		dstore.InitGlobalManualScheduler(config.Route, proxyConf.N, proxyConf.Scheduler)
+	}
 	storage := new(dstore.Storage)
+	err := storage.InitStorageEngine(proxyConf)
+	if err != nil {
+		log.Fatalf("Init storage engine err: %s", err)
+	}
 	addr := fmt.Sprintf("%s:%d", proxyConf.Listen, proxyConf.Port)
 	server = mc.NewServer(storage)
 	server.Listen(addr)

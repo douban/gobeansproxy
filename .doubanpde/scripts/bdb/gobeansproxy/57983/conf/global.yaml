@@ -1,0 +1,32 @@
+hstore:
+    data:
+        check_vhash: true
+        datafile_max_str: 4000M
+        flush_interval: 60
+        flush_wake_str: 10M
+        no_gc_days: 7
+    hint:
+        hint_index_interval_str: 32K
+        hint_merge_interval: 5
+        hint_no_merged: true
+        hint_split_cap_str: 1M
+    htree:
+        tree_height: 3
+    local:
+        home: /data
+mc:
+    body_big_str: 5M
+    body_c_str: 0K
+    body_max_str: 50M
+    flush_max_str: 100M
+    max_key_len: 250
+    max_req: 16
+server:
+    accesslog: /tmp/access.log
+    errorlog: /tmp/error.log
+    hostname: 127.0.0.1
+    listen: 0.0.0.0
+    port: 57983
+    threads: 4
+    webport: 57993
+    zk: 'NO'

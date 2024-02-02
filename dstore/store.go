@@ -2,31 +2,81 @@ package dstore
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/douban/gobeansdb/cmem"
 	"github.com/douban/gobeansdb/loghub"
 	mc "github.com/douban/gobeansdb/memcache"
+	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/douban/gobeansproxy/cassandra"
 	"github.com/douban/gobeansproxy/config"
 )
 
 var (
 	logger    = loghub.ErrorLogger
 	proxyConf = &config.Proxy
-)
-
-var (
 	// ErrWriteFailed 表示成功写入的节点数小于 StorageClient.W
 	ErrWriteFailed = errors.New("write failed")
+	PrefixStorageSwitcher *cassandra.PrefixSwitcher
+	PrefixTableFinder *cassandra.KeyTableFinder
+	CqlStore *cassandra.CassandraStore
 )
 
 type Storage struct {
+	cstar *cassandra.CassandraStore
+	PSwitcher *cassandra.PrefixSwitcher
+	dualWErrHandler *cassandra.DualWriteErrorMgr
+}
+
+func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
+	if !pCfg.CassandraStoreCfg.Enable && !pCfg.DStoreConfig.Enable {
+		return fmt.Errorf("You must enable at least one store engine")
+	}
+
+	if pCfg.CassandraStoreCfg.Enable {
+		cstar, err := cassandra.NewCassandraStore(&proxyConf.CassandraStoreCfg)
+		if err != nil {
+			return err
+		}
+
+		s.cstar = cstar
+
+		switcher, err := cassandra.NewPrefixSwitcher(&proxyConf.CassandraStoreCfg, cstar)
+		if err != nil {
+			return err
+		}
+		s.PSwitcher = switcher
+		PrefixStorageSwitcher = switcher
+		PrefixTableFinder = cstar.GetPrefixTableFinder()
+		CqlStore = cstar
+		dualWErrCfg := pCfg.CassandraStoreCfg.DualWErrCfg
+		dualWErrHandler, err := cassandra.NewDualWErrMgr(
+			&dualWErrCfg,
+			nil,
+		)
+		if err != nil {
+			return err
+		}
+		s.dualWErrHandler = dualWErrHandler
+		logger.Infof("dual write log send to: %s", s.dualWErrHandler.EFile)
+	} else {
+		switcher, err := cassandra.NewPrefixSwitcher(&proxyConf.CassandraStoreCfg, nil)
+		if err != nil {
+			return err
+		}
+		s.PSwitcher = switcher
+	}
+	return nil
 }
 
 func (s *Storage) Client() mc.StorageClient {
-	return NewStorageClient(proxyConf.N, proxyConf.W, proxyConf.R)
+	return NewStorageClient(
+		proxyConf.N, proxyConf.W, proxyConf.R,
+		s.cstar, s.PSwitcher, s.dualWErrHandler,
+	)
 }
 
 // client for gobeansdb
@@ -40,17 +90,46 @@ type StorageClient struct {
 
 	// reinit by GetScheduler() for each request, i.e. entry of each puplic method
 	sched Scheduler
+
+	// cassandra
+	cstar *cassandra.CassandraStore
+
+	// prefix storage switcher
+	pswitcher *cassandra.PrefixSwitcher
+
+	// dual write error handler
+	dualWErrHandler *cassandra.DualWriteErrorMgr
+
+	// proxy hostname cstar cluster name
+	proxyHostName, cstarClusterName string
 }
 
-func NewStorageClient(n int, w int, r int) (c *StorageClient) {
+func NewStorageClient(n int, w int, r int,
+	cstar *cassandra.CassandraStore,
+	pStoreSwitcher *cassandra.PrefixSwitcher,
+	dualEHandler *cassandra.DualWriteErrorMgr,
+) (c *StorageClient) {
 	c = new(StorageClient)
 	c.N = n
 	c.W = w
 	c.R = r
+	c.cstar = cstar
+	c.pswitcher = pStoreSwitcher
+	c.dualWErrHandler = dualEHandler
+	c.proxyHostName = fmt.Sprintf("%s:%d", proxyConf.Hostname, proxyConf.Port)
+	if c.cstar != nil {
+		// for user disabled cstar store
+		c.cstarClusterName = c.cstar.ClusterName
+	}
 	return c
 }
 
 func (c *StorageClient) GetSuccessedTargets() []string {
+	if len(c.SuccessedTargets) == 0 {
+		c.SuccessedTargets = append(c.SuccessedTargets, "NoWhere", c.proxyHostName)
+	} else {
+		c.SuccessedTargets = append(c.SuccessedTargets, c.proxyHostName)
+	}
 	return c.SuccessedTargets
 }
 
@@ -60,40 +139,84 @@ func (c *StorageClient) Clean() {
 }
 
 func (c *StorageClient) Get(key string) (item *mc.Item, err error) {
-	c.sched = GetScheduler()
+	timer := prometheus.NewTimer(
+		cmdE2EDurationSeconds.WithLabelValues("get"),
+	)
+	defer timer.ObserveDuration()
 
-	hosts := c.sched.GetHostsByKey(key)
-	cnt := 0
-	for _, host := range hosts[:c.N] {
-		start := time.Now()
-		item, err = host.Get(key)
-		if err == nil {
-			cnt++
-			if item != nil {
-				if item.Cap < proxyConf.ItemSizeStats {
-					c.sched.FeedbackLatency(host, key, start, time.Now().Sub(start))
+	bReadEnable, cReadEnable := c.pswitcher.ReadEnabledOn(key)
+
+	if bReadEnable {
+		totalReqs.WithLabelValues("get", "beansdb").Inc()
+		c.sched = GetScheduler()
+
+		hosts := c.sched.GetHostsByKey(key)
+		cnt := 0
+		for _, host := range hosts[:c.N] {
+			start := time.Now()
+			item, err = host.Get(key)
+			if err == nil {
+				cnt++
+				if item != nil {
+					if item.Cap < proxyConf.ItemSizeStats {
+						c.sched.FeedbackLatency(host, key, start, time.Now().Sub(start))
+					}
+					c.SuccessedTargets = []string{host.Addr}
+					return
+				} else {
+					c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
 				}
-				c.SuccessedTargets = []string{host.Addr}
-				return
 			} else {
-				c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
-			}
-		} else {
-			if isWaitForRetry(err) {
-				c.sched.FeedbackError(host, key, start, FeedbackConnectErrDefault)
-			} else {
-				c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDefault)
+				if isWaitForRetry(err) {
+					c.sched.FeedbackError(host, key, start, FeedbackConnectErrDefault)
+				} else {
+					c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDefault)
+				}
 			}
 		}
+
+		if cnt >= c.R {
+			// because hosts are sorted
+			err = nil
+		}
+
+		// here is a failure exit
+		return
 	}
 
-	if cnt >= c.R {
-		// because hosts are sorted
-		err = nil
+	if cReadEnable {
+		totalReqs.WithLabelValues("get", "cstar").Inc()
+
+		switch key[0] {
+		// ref: https://github.com/douban/gobeansdb/wiki/protocol-extention
+		// ref: https://github.com/douban/gobeansdb/blob/d06c2ff9fcd4f381c54b260ec64186c93d1a024f/gobeansdb/store.go#L157
+		case '?':
+			extended := false
+			if len(key) > 1 {
+				if key[1] == '?' {
+					extended = true
+					key = key[2:]
+				} else {
+					key = key[1:]
+				}
+				if !cassandra.IsValidKeyString(key) {
+					return nil, nil
+				}
+			}
+			item, err = c.cstar.GetMeta(key, extended)
+		default:
+			item, err = c.cstar.Get(key)
+		}
+
+		if err == nil {
+			c.SuccessedTargets = append(c.SuccessedTargets, c.cstarClusterName)
+		} else {
+			errorReqs.WithLabelValues("get", "cstar").Inc()
+		}
+		return item, err
 	}
 
-	// here is a failure exit
-	return
+	return nil, fmt.Errorf("You must enable at least one read engine for get")
 }
 
 func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets []string, err error) {
@@ -146,63 +269,138 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 }
 
 func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err error) {
-	c.sched = GetScheduler()
-	var lock sync.Mutex
-	rs = make(map[string]*mc.Item, len(keys))
+	timer := prometheus.NewTimer(
+		cmdE2EDurationSeconds.WithLabelValues("getm"),
+	)
+	defer timer.ObserveDuration()
 
-	gs := c.sched.DivideKeysByBucket(keys)
-	reply := make(chan bool, len(gs))
-	for _, ks := range gs {
-		if len(ks) > 0 {
-			go func(keys []string) {
-				r, t, e := c.getMulti(keys)
-				if e != nil {
-					err = e
-				} else {
-					for k, v := range r {
-						lock.Lock()
-						rs[k] = v
-						c.SuccessedTargets = append(c.SuccessedTargets, t...)
-						lock.Unlock()
+	bkeys, ckeys := c.pswitcher.ReadEnableOnKeys(keys)
+	rs = make(map[string]*mc.Item, len(keys))
+	
+	if len(bkeys) > 0 {
+		totalReqs.WithLabelValues("getm", "beansdb").Inc()
+		c.sched = GetScheduler()
+		var lock sync.Mutex
+
+		gs := c.sched.DivideKeysByBucket(bkeys)
+		reply := make(chan bool, len(gs))
+		for _, ks := range gs {
+			if len(ks) > 0 {
+				go func(gkeys []string) {
+					r, t, e := c.getMulti(gkeys)
+					if e != nil {
+						err = e
+					} else {
+						for k, v := range r {
+							lock.Lock()
+							// k should ALWAYS not exist in rs
+							// otherwise there would be a memory leak
+							rs[k] = v
+							c.SuccessedTargets = append(c.SuccessedTargets, t...)
+							lock.Unlock()
+						}
 					}
-				}
+					reply <- true
+				}(ks)
+			} else {
 				reply <- true
-			}(ks)
-		} else {
-			reply <- true
+			}
+		}
+
+		// wait for complete
+		for range gs {
+			<-reply
+		}
+
+		// keys all find in bdb
+		if len(ckeys) == 0 {
+			return
 		}
 	}
 
-	// wait for complete
-	for range gs {
-		<-reply
+	if len(ckeys) > 0 && err == nil {
+		totalReqs.WithLabelValues("getm", "cstar").Inc()
+		err = c.cstar.GetMulti(ckeys, rs)
+		if err == nil {
+			c.SuccessedTargets = append(c.SuccessedTargets, c.cstarClusterName)
+		}
 	}
 	return
 }
 
 func (c *StorageClient) Set(key string, item *mc.Item, noreply bool) (ok bool, err error) {
-	c.sched = GetScheduler()
-	hosts := c.sched.GetHostsByKey(key)
-	ok = false
-	err = ErrWriteFailed
-	if len(hosts) >= c.N {
-		mainSuc, mainTargets := c.setConcurrently(hosts[:c.N], key, item, noreply)
-		if mainSuc >= c.W {
-			ok = true
-			err = nil
-			c.SuccessedTargets = mainTargets
-		} else {
-			backupSuc, backupTargets := c.setConcurrently(hosts[c.N:], key, item, noreply)
-			if mainSuc+backupSuc >= c.W {
+	defer item.Free()
+	timer := prometheus.NewTimer(
+		cmdE2EDurationSeconds.WithLabelValues("set"),
+	)
+	defer timer.ObserveDuration()
+
+	rwStatus := c.pswitcher.GetStatus(key)
+	bWriteEnable, cWriteEnable := rwStatus.IsWriteOnBeansdb(), rwStatus.IsWriteOnCstar()
+
+	if bWriteEnable {
+		totalReqs.WithLabelValues("set", "beansdb").Inc()
+
+		c.sched = GetScheduler()
+		hosts := c.sched.GetHostsByKey(key)
+		ok = false
+		err = ErrWriteFailed
+		if len(hosts) >= c.N {
+			mainSuc, mainTargets := c.setConcurrently(hosts[:c.N], key, item, noreply)
+			if mainSuc >= c.W {
 				ok = true
 				err = nil
-				c.SuccessedTargets = append(mainTargets, backupTargets...)
+				c.SuccessedTargets = mainTargets
+			} else {
+				backupSuc, backupTargets := c.setConcurrently(hosts[c.N:], key, item, noreply)
+				if mainSuc+backupSuc >= c.W {
+					ok = true
+					err = nil
+					c.SuccessedTargets = append(mainTargets, backupTargets...)
+				}
 			}
 		}
+		cmem.DBRL.SetData.SubSizeAndCount(item.Cap)
+		if err != nil {
+			errorReqs.WithLabelValues("set", "beansdb").Inc()
+		}
 	}
-	cmem.DBRL.SetData.SubSizeAndCount(item.Cap)
-	item.Free()
-	return
+
+	if cWriteEnable {
+		// beansdb write error cstar just return
+		if bWriteEnable && err != nil {
+			return ok, err
+		}
+
+		totalReqs.WithLabelValues("set", "cstar").Inc()
+
+		// beansdb write succ means this is a legit key
+		if !bWriteEnable && !cassandra.IsValidKeyString(key) {
+			return false, fmt.Errorf("Key format invalid")
+		}
+
+		cok, cerr := c.cstar.Set(key, item)
+		if cerr != nil {
+			errorReqs.WithLabelValues("set", "cstar").Inc()
+			logger.Errorf("set on c* failed: %s, key: %s", cerr, key)
+
+			// we only care c* dual write error only when bdb read enabled
+			// brwcw -> return bdb result c* error just add to err log
+			// bwcrw -> return c* error as final error, if bdb write err, c* write will not exec
+			if bWriteEnable {
+				errorReqs.WithLabelValues("set", "bcdual").Inc()
+				c.dualWErrHandler.HandleErr(key, "set", cerr)
+
+				if rwStatus.IsReadOnBeansdb() {
+					return ok, err
+				}
+			}
+		}
+		c.SuccessedTargets = append(c.SuccessedTargets, c.cstarClusterName)
+		return cok, cerr
+	}
+
+	return ok, err
 }
 
 // cmdReturnType 只在 setConcurrently 函数中使用，
@@ -244,6 +442,9 @@ func (c *StorageClient) setConcurrently(
 }
 
 func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
+	if proxyConf.CassandraStoreCfg.Enable {
+		return false, fmt.Errorf("cstar store do not support append")
+	}
 	// NOTE: gobeansdb now do not support `append`, this is not tested.
 	c.sched = GetScheduler()
 	suc := 0
@@ -274,6 +475,9 @@ func (c *StorageClient) Append(key string, value []byte) (ok bool, err error) {
 // NOTE: Incr command may has consistency problem
 // link: http://github.com/douban/gobeansproxy/issues/7
 func (c *StorageClient) Incr(key string, value int) (result int, err error) {
+	if proxyConf.CassandraStoreCfg.Enable {
+		return 0, fmt.Errorf("cstar store do not support incr")
+	}
 	c.sched = GetScheduler()
 	suc := 0
 	for i, host := range c.sched.GetHostsByKey(key) {
@@ -308,42 +512,85 @@ func (c *StorageClient) Incr(key string, value int) (result int, err error) {
 
 // TODO: 弄清楚为什么 delete 不遵循 NWR 规则
 func (c *StorageClient) Delete(key string) (flag bool, err error) {
-	c.sched = GetScheduler()
-	suc := 0
-	errCnt := 0
-	lastErrStr := ""
-	failedHosts := make([]string, 0, 2)
-	for i, host := range c.sched.GetHostsByKey(key) {
-		start := time.Now()
-		ok, err := host.Delete(key)
-		if ok {
-			suc++
-			c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
-		} else if err != nil {
-			errCnt++
-			lastErrStr = err.Error()
-			failedHosts = append(failedHosts, host.Addr)
-			if i >= c.N {
-				continue
-			}
-			if !isWaitForRetry(err) {
-				c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDelete)
-			}
-		}
+	timer := prometheus.NewTimer(
+		cmdE2EDurationSeconds.WithLabelValues("del"),
+	)
+	defer timer.ObserveDuration()
 
-		// TODO: 弄清楚这里为什么不是 suc > c.W
-		if suc >= c.N {
-			break
+	rwStatus := c.pswitcher.GetStatus(key)
+	bWriteEnable, cWriteEnable := rwStatus.IsWriteOnBeansdb(), rwStatus.IsWriteOnCstar()
+
+	if bWriteEnable {
+		totalReqs.WithLabelValues("del", "beansdb").Inc()
+		c.sched = GetScheduler()
+		suc := 0
+		errCnt := 0
+		lastErrStr := ""
+		failedHosts := make([]string, 0, 2)
+		for i, host := range c.sched.GetHostsByKey(key) {
+			start := time.Now()
+			ok, err := host.Delete(key)
+			if ok {
+				suc++
+				c.SuccessedTargets = append(c.SuccessedTargets, host.Addr)
+			} else if err != nil {
+				errCnt++
+				lastErrStr = err.Error()
+				failedHosts = append(failedHosts, host.Addr)
+				if i >= c.N {
+					continue
+				}
+				if !isWaitForRetry(err) {
+					c.sched.FeedbackError(host, key, start, FeedbackNonConnectErrDelete)
+				}
+			}
+
+			// TODO: 弄清楚这里为什么不是 suc > c.W
+			if suc >= c.N {
+				break
+			}
+		}
+		if errCnt > 0 {
+			logger.Warnf("key: %s was delete failed in %v, and the last error is %s",
+				key, failedHosts, lastErrStr)
+		}
+		if errCnt < 2 {
+			err = nil
+		}
+		flag = suc > 0
+		if err != nil {
+			errorReqs.WithLabelValues("del", "beansdb").Inc()
 		}
 	}
-	if errCnt > 0 {
-		logger.Warnf("key: %s was delete failed in %v, and the last error is %s",
-			key, failedHosts, lastErrStr)
+
+	if cWriteEnable {
+		// when dual write we follow the beansdb principle
+		// if bdb write failed we just return and wait for
+		// client to retry that
+		if bWriteEnable && err != nil {
+			return
+		}
+		totalReqs.WithLabelValues("del", "cstar").Inc()
+		if !cassandra.IsValidKeyString(key) {
+			return false, fmt.Errorf("invalide key format")
+		}
+		cflag, cerr := c.cstar.Delete(key)
+		if cerr != nil {
+			errorReqs.WithLabelValues("del", "cstar").Inc()
+			logger.Errorf("del on c* failed: %s, key: %s", cerr, key)
+			if bWriteEnable {
+				errorReqs.WithLabelValues("del", "bcdual").Inc()
+				c.dualWErrHandler.HandleErr(key, "del", cerr)
+
+				if rwStatus.IsReadOnBeansdb() {
+					return
+				}
+			}
+		}
+		c.SuccessedTargets = append(c.SuccessedTargets, c.cstarClusterName)
+		return cflag, cerr
 	}
-	if errCnt < 2 {
-		err = nil
-	}
-	flag = suc > 0
+
 	return
 }
 
@@ -352,6 +599,9 @@ func (c *StorageClient) Len() int {
 }
 
 func (c *StorageClient) Close() {
+	if proxyConf.CassandraStoreCfg.Enable {
+		c.cstar.Close()
+	}
 	return
 }
 
