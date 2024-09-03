@@ -44,7 +44,7 @@ func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
 
 		s.cstar = cstar
 
-		switcher, err := cassandra.NewPrefixSwitcher(&proxyConf.CassandraStoreCfg, cstar)
+		switcher, err := cassandra.NewPrefixSwitcher(proxyConf, cstar)
 		if err != nil {
 			return err
 		}
@@ -63,7 +63,7 @@ func (s *Storage) InitStorageEngine(pCfg *config.ProxyConfig) error {
 		s.dualWErrHandler = dualWErrHandler
 		logger.Infof("dual write log send to: %s", s.dualWErrHandler.EFile)
 	} else {
-		switcher, err := cassandra.NewPrefixSwitcher(&proxyConf.CassandraStoreCfg, nil)
+		switcher, err := cassandra.NewPrefixSwitcher(proxyConf, nil)
 		if err != nil {
 			return err
 		}
@@ -269,14 +269,18 @@ func (c *StorageClient) getMulti(keys []string) (rs map[string]*mc.Item, targets
 }
 
 func (c *StorageClient) GetMulti(keys []string) (rs map[string]*mc.Item, err error) {
+	// The keys args MUST BE DEDUPLICATED, if not, there will be MEMORY LEAK
+	keys = deduplicateKeys(keys)
+
 	timer := prometheus.NewTimer(
 		cmdE2EDurationSeconds.WithLabelValues("getm"),
 	)
 	defer timer.ObserveDuration()
 
 	bkeys, ckeys := c.pswitcher.ReadEnableOnKeys(keys)
+
 	rs = make(map[string]*mc.Item, len(keys))
-	
+
 	if len(bkeys) > 0 {
 		totalReqs.WithLabelValues("getm", "beansdb").Inc()
 		c.sched = GetScheduler()
