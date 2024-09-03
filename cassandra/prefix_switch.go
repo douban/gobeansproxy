@@ -48,6 +48,7 @@ type PrefixSwitcher struct {
 	lock sync.RWMutex
 	currentTrieMap map[string]string
 	cstarEnabled bool
+	bdbEnabled bool
 }
 
 func (s PrefixSwitchStatus) IsReadOnBeansdb() bool {
@@ -157,16 +158,16 @@ func GetPrefixSwitchTrieFromCfg(
 	}
 }
 
-func NewPrefixSwitcher(config *config.CassandraStoreCfg, cqlStore *CassandraStore) (*PrefixSwitcher, error) {
+func NewPrefixSwitcher(cfg *config.ProxyConfig, cqlStore *CassandraStore) (*PrefixSwitcher, error) {
 	f := new(PrefixSwitcher)
 
-	if !config.Enable {
+	if !cfg.CassandraStoreCfg.Enable {
 		f.defaultT = PrefixSwitchBrw
 		f.cstarEnabled = false
 		return f, nil
 	}
 
-	prefixTrie, nowMap, err := GetPrefixSwitchTrieFromCfg(config, cqlStore)
+	prefixTrie, nowMap, err := GetPrefixSwitchTrieFromCfg(&cfg.CassandraStoreCfg, cqlStore)
 	if err != nil {
 		return nil, err
 	}
@@ -174,13 +175,14 @@ func NewPrefixSwitcher(config *config.CassandraStoreCfg, cqlStore *CassandraStor
 	f.trie = prefixTrie
 	f.cstarEnabled = true
 
-	defaultS, err := strToSwitchStatus(config.SwitchToKeyDefault)
+	defaultS, err := strToSwitchStatus(cfg.SwitchToKeyDefault)
 	if err != nil {
 		return nil, err
 	}
 
 	f.defaultT = defaultS
 	f.currentTrieMap = nowMap
+	f.bdbEnabled = cfg.DStoreConfig.Enable
 	return f, nil
 }
 
@@ -215,6 +217,10 @@ func (s *PrefixSwitcher) matchStatus(key string) PrefixSwitchStatus {
 }
 
 func (s *PrefixSwitcher) GetStatus(key string) PrefixSwitchStatus {
+	if !s.bdbEnabled && s.cstarEnabled {
+		return PrefixSwitchCrw
+	}
+
 	if !s.cstarEnabled {
 		return PrefixSwitchBrw
 	}
@@ -226,15 +232,25 @@ func (s *PrefixSwitcher) GetStatus(key string) PrefixSwitchStatus {
 
 // check key prefix and return bdb read enable c* read enable
 func (s *PrefixSwitcher) ReadEnabledOn(key string) (bool, bool) {
+	if !s.bdbEnabled && s.cstarEnabled {
+		return false, true
+	}
+
 	if !s.cstarEnabled {
 		return true, false
 	}
+
 	status := s.GetStatus(key)
 	return status.IsReadOnBeansdb(), status.IsReadOnCstar()
 }
 
 // check keys prefix list and return bdb read keys and c* read keys
 func (s *PrefixSwitcher) ReadEnableOnKeys(keys []string) (bkeys []string, ckeys []string) {
+	if !s.bdbEnabled && s.cstarEnabled {
+		ckeys = keys
+		return
+	}
+
 	if !s.cstarEnabled {
 		bkeys = keys
 		return
@@ -261,6 +277,10 @@ func (s *PrefixSwitcher) ReadEnableOnKeys(keys []string) (bkeys []string, ckeys 
 
 // check key prefix and return bdb write enable c* write enable
 func (s *PrefixSwitcher) WriteEnabledOn(key string) (bool, bool) {
+	if !s.bdbEnabled && s.cstarEnabled {
+		return false, true
+	}
+
 	if !s.cstarEnabled {
 		return true, false
 	}
